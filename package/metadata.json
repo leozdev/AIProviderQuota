@@ -6,9 +6,24 @@
     "Description": "Quotas disponíveis do Codex, Claude e Ollama Cloud",
     "Icon": "view-statistics",
     "Category": "System Information",
-    "Version": "1.2.1",
+    "Version": "1.2.2",
     "License": "MIT",
-    "Authors": [{"Name": "Leo"}, {"Name": "Marc Cheng", "Task": "Base original PlasmaWidgetAiUsage"}]
+    "Authors": [
+      {
+        "Name": "Leo Zamparo (leozdev)",
+        "Task": "Desenvolvimento e manutenção do AIProviderQuota",
+        "Website": "https://github.com/leozdev"
+      }
+    ],
+    "OtherContributors": [
+      {
+        "Name": "Marc Cheng",
+        "Task": "Autor do PlasmaWidgetAiUsage; código reutilizado sob MIT",
+        "Website": "https://github.com/WariKoda/PlasmaWidgetAiUsage"
+      }
+    ],
+    "Website": "https://github.com/leozdev/AIProviderQuota",
+    "Copyright": "Copyright (c) 2026 Leo Zamparo (AIProviderQuota); Copyright (c) 2026 Marc Cheng (código upstream reutilizado)"
   },
   "X-Plasma-API-Minimum-Version": "6.0"
 }

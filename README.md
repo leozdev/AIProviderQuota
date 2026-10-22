@@ -130,8 +130,12 @@ O script remove as instâncias de **Cotas de IA** e o pacote instalado. A chave 
 - O endpoint do Claude é interno; alterações no serviço podem exigir ajustes na integração.
 - Antigravity/Gemini ficou para uma etapa futura.
 
-## Licença e créditos
+## Autoria, licença e créditos
 
-Código sob [licença MIT](LICENSE). A integração QML/Python e partes do protocolo Codex foram adaptadas de [PlasmaWidgetAiUsage](https://github.com/WariKoda/PlasmaWidgetAiUsage), de Marc Cheng, revisão `1b8fef4f2ca78482d8ca289a4204f02e5c51e111`. Os créditos estão preservados em [NOTICE](NOTICE).
+**AIProviderQuota é desenvolvido e mantido por [Leo Zamparo (leozdev)](https://github.com/leozdev).**
+
+O copyright de 2026 de Leo Zamparo cobre as adições e adaptações do AIProviderQuota. O aviso original de copyright de Marc Cheng e o texto da licença MIT do código reutilizado são preservados em `LICENSE` e `package/LICENSE`.
+
+Código sob [licença MIT](LICENSE). A integração QML/Python e partes do protocolo Codex foram adaptadas de [PlasmaWidgetAiUsage](https://github.com/WariKoda/PlasmaWidgetAiUsage), de Marc Cheng, revisão `1b8fef4f2ca78482d8ca289a4204f02e5c51e111`. Marc é creditado como autor dessa base reutilizada. Os detalhes de procedência estão em [NOTICE](NOTICE).
 
 A procedência dos ícones está documentada em [ATTRIBUTION.md](package/contents/icons/ATTRIBUTION.md). As marcas pertencem aos respectivos provedores.

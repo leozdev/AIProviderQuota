@@ -1,6 +1,21 @@
-Cotas de IA derives its QML executable-engine integration and Codex JSON-RPC/normalization routines from PlasmaWidgetAiUsage by Marc Cheng (MIT).
+AIProviderQuota
+Developed and maintained by Leo Zamparo (leozdev).
+Copyright (c) 2026 Leo Zamparo (leozdev) for the AIProviderQuota additions and adaptations.
+Project: https://github.com/leozdev/AIProviderQuota
+
+Upstream code attribution
+Parts of the QML executable-engine integration, Codex JSON-RPC lifecycle and quota
+normalization, and formatting/countdown helpers were adapted from
+PlasmaWidgetAiUsage by Marc Cheng under the MIT license.
+Original copyright: Copyright (c) 2026 Marc Cheng
 Upstream: https://github.com/WariKoda/PlasmaWidgetAiUsage
 Reviewed revision: 1b8fef4f2ca78482d8ca289a4204f02e5c51e111
-Adaptations: remaining-quota display, fixed three-provider scope, bounded collection, KWallet-backed Ollama credentials, Portuguese UI and validation.
 
-Provider logo provenance and attribution: package/contents/icons/ATTRIBUTION.md (contents/icons/ATTRIBUTION.md inside the installed package).
+Marc Cheng is credited as the author of the reused upstream work. Development
+and maintenance of AIProviderQuota are identified separately above.
+The original copyright notice and MIT permission/warranty text are preserved
+in LICENSE alongside the notice for AIProviderQuota's additions.
+
+Provider logos have separate source terms; see contents/icons/ATTRIBUTION.md
+inside the widget package, or package/contents/icons/ATTRIBUTION.md in the
+repository. Provider trademarks belong to their respective owners.
