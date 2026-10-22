@@ -180,6 +180,7 @@ sys.stdin.read()
             sessions.mkdir()
             valid = sessions / 'rollout-valid.jsonl'
             valid.write_text('\n'.join(json.dumps(row) for row in rows))
+            os.utime(valid, (self.now, self.now))
             missing = sessions / 'rollout-disappeared.jsonl'
             with patch.object(Path, 'glob', return_value=iter([missing, valid])):
                 observed, snapshot = collector.codex_local_record(self.now)
@@ -206,6 +207,98 @@ sys.stdin.read()
             self.assertEqual(len(reads), 8)
             self.assertEqual(snapshot['primary']['used_percent'], 11)
             self.assertEqual(observed, self.now - 1)
+
+    def test_local_codex_does_not_read_expired_files(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, CODEX_HOME=directory):
+            sessions = Path(directory) / 'sessions'
+            sessions.mkdir()
+            path = sessions / 'rollout-expired.jsonl'
+            path.write_text('not read')
+            os.utime(path, (self.now - 601, self.now - 601))
+            with patch.object(Path, 'open', side_effect=AssertionError('expired tail was opened')):
+                self.assertIsNone(collector.codex_local_record(self.now))
+
+    def test_slow_provider_has_global_deadline_without_losing_other_results(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            marker = Path(directory) / 'child.pid'
+            def slow():
+                child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+                marker.write_text(str(child.pid))
+                time.sleep(30)
+            sample = collector.report('codex', 'test', [collector.quota_window('7d', 'Semana', 72, self.now + 60)])
+            cached = collector.report('ollama', 'test', [collector.quota_window('weekly', 'Semana', 42, self.now + 60)], self.now - 30)
+            collector.save_cache('ollama', {'snapshot': cached, 'next_allowed_at': 0})
+            started = time.monotonic()
+            with patch.object(collector, 'COLLECTION_TIMEOUT', 0.25), patch.object(collector, 'provider_codex', return_value=sample), patch.object(collector, 'provider_claude', side_effect=collector.SourceError('auth', 'expired')), patch.object(collector, 'provider_ollama', side_effect=slow):
+                rows = collector.collect(force=True)['providers']
+            self.assertLess(time.monotonic() - started, 1.5)
+            self.assertEqual([row['state'] for row in rows], ['ok', 'auth', 'stale'])
+            self.assertIn('excedeu', rows[2]['message'])
+            self.assertEqual(rows[2]['fetched_at'], self.now - 30)
+            self.assertEqual(rows[2]['windows'][0]['remaining_percent'], 42)
+            child_pid = int(marker.read_text())
+            # A short-lived zombie can await init's reaper; it is no longer running.
+            status = Path('/proc/%d/stat' % child_pid)
+            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
+
+    def test_provider_deadline_also_stops_codex_app_server_and_releases_lock(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            marker = Path(directory) / 'rpc-child.pid'
+            real_popen = subprocess.Popen
+            def launch(*args, **kwargs):
+                child = real_popen([sys.executable, '-c', 'import time; time.sleep(30)'], **kwargs)
+                marker.write_text(str(child.pid))
+                return child
+            with patch.object(collector, 'COLLECTION_TIMEOUT', .25), patch.object(collector.subprocess, 'Popen', side_effect=launch):
+                value = collector.collect(['codex'], force=True)['providers'][0]
+            self.assertEqual(value['state'], 'unavailable')
+            child_pid = int(marker.read_text())
+            status = Path('/proc/%d/stat' % child_pid)
+            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
+            lock = os.open(Path(directory) / 'collection.lock', os.O_RDWR)
+            try:
+                collector.fcntl.flock(lock, collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
+            finally:
+                os.close(lock)
+
+    def test_second_instance_waits_and_reuses_first_instances_fresh_cache(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            sample = collector.report('codex', 'test', [collector.quota_window('7d', 'Semana', 72, self.now + 60)])
+            cache = Path(directory)
+            helper = '''import fcntl,json,pathlib,sys,time
+root=pathlib.Path(sys.argv[1])
+with (root/'collection.lock').open('w') as lock:
+ fcntl.flock(lock,fcntl.LOCK_EX)
+ (root/'ready').touch()
+ time.sleep(.15)
+ (root/'codex.json').write_text(sys.argv[2])
+'''
+            process = subprocess.Popen([sys.executable, '-c', helper, directory, json.dumps({'snapshot': sample, 'next_allowed_at': 0})])
+            try:
+                deadline = time.monotonic() + 2
+                while not (cache / 'ready').exists() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertTrue((cache / 'ready').exists())
+                with patch.object(collector, 'provider_codex', side_effect=AssertionError('duplicate query')):
+                    value = collector.collect(['codex'], force=True)['providers'][0]
+                self.assertEqual(value['state'], 'ok')
+                self.assertEqual(value['message'], '')
+            finally:
+                process.wait(timeout=2)
+
+    def test_waiting_for_another_instance_is_also_bounded(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            lock = os.open(Path(directory) / 'collection.lock', os.O_CREAT | os.O_RDWR, 0o600)
+            try:
+                collector.fcntl.flock(lock, collector.fcntl.LOCK_EX)
+                with patch.object(collector, 'COLLECTION_TIMEOUT', .1), patch.object(collector, 'collect_parallel', side_effect=AssertionError('lock bypassed')):
+                    started = time.monotonic()
+                    value = collector.collect(['codex'])['providers'][0]
+                self.assertLess(time.monotonic() - started, 1)
+                self.assertEqual(value['state'], 'unavailable')
+                self.assertIn('em andamento', value['message'])
+            finally:
+                os.close(lock)
 
     def test_rpc_timeout_also_terminates_and_reaps_child(self):
         real_popen = subprocess.Popen

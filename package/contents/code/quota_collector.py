@@ -5,13 +5,14 @@ Codex RPC lifecycle/normalization adapted from Marc Cheng's PlasmaWidgetAiUsage
 (MIT), revision 1b8fef4f2ca78482d8ca289a4204f02e5c51e111. See LICENSE/NOTICE.
 """
 import argparse
-import concurrent.futures
 import datetime as dt
 import fcntl
 import getpass
 import heapq
 import json
 import math
+import multiprocessing
+from multiprocessing.connection import wait
 import os
 from pathlib import Path
 import selectors
@@ -29,6 +30,7 @@ FOLDER = "AI Quotas"
 ENTRY = "ollama-cloud-api-key"
 MAX_AGE = 600
 MAX_BODY = 1024 * 1024
+COLLECTION_TIMEOUT = 20
 PROVIDERS = ("codex", "claude", "ollama")
 LABELS = {"codex": "Codex", "claude": "Claude", "ollama": "Ollama Cloud"}
 CACHE = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "ai-quotas"
@@ -129,6 +131,7 @@ def http_json(url, token, oauth=False):
             raise ValueError("object expected")
         return value
     except urllib.error.HTTPError as exc:
+        exc.close()
         if exc.code in (401, 403):
             raise SourceError("auth", "A autenticação foi recusada. Renove o login ou a chave.") from None
         if exc.code == 429:
@@ -263,11 +266,14 @@ def codex_rpc(timeout=7):
     if not binary:
         raise SourceError("unavailable", "Cliente Codex não encontrado.")
     process = None
+    # In a provider worker the app-server shares its supervised process group.
+    # Direct CLI/test calls keep their own group for the same cleanup guarantee.
+    own_group = multiprocessing.parent_process() is None
     selector = selectors.DefaultSelector()
     try:
         process = subprocess.Popen([binary, "app-server", "--listen", "stdio://"],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, start_new_session=True)
+                                   stderr=subprocess.PIPE, start_new_session=own_group)
         def send(value):
             process.stdin.write((json.dumps(value) + "\n").encode())
             process.stdin.flush()
@@ -324,14 +330,14 @@ def codex_rpc(timeout=7):
                     pass
             if process.poll() is None:
                 try:
-                    os.killpg(process.pid, signal.SIGTERM)
+                    (os.killpg if own_group else os.kill)(process.pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
                 try:
                     process.wait(timeout=1)
                 except subprocess.TimeoutExpired:
                     try:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        (os.killpg if own_group else os.kill)(process.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
                     process.wait(timeout=2)
@@ -352,7 +358,11 @@ def codex_local_record(now):
                 continue
     files = heapq.nlargest(8, candidates(), key=lambda row: row[0])
     best = None
-    for _, path in files:
+    for modified, path in files:
+        # Session logs are append-only; an untouched file cannot contain a new
+        # quota observation. Keep scanning old directories, but skip old tails.
+        if modified < now - MAX_AGE:
+            continue
         try:
             with path.open("rb") as file:
                 size = file.seek(0, 2)
@@ -513,18 +523,84 @@ def collect_provider(pid, force=False, now=None):
         return unavailable(pid, "unavailable", "Não foi possível interpretar a resposta do provedor.")
 
 
+def provider_worker(connection, pid, force):
+    # A separate process lets the parent enforce a wall-clock deadline even
+    # during DNS resolution. Wallet CLI children share this process group.
+    os.setsid()
+    try:
+        connection.send(collect_provider(pid, force))
+    finally:
+        connection.close()
+
+
+def collect_parallel(selected, force, deadline):
+    context = multiprocessing.get_context("fork")  # Plasma targets Linux.
+    workers, rows = {}, {}
+    try:
+        for pid in selected:
+            reader, writer = context.Pipe(duplex=False)
+            process = context.Process(target=provider_worker, args=(writer, pid, force))
+            try:
+                process.start()
+            except Exception:
+                reader.close()
+                raise
+            finally:
+                writer.close()
+            workers[reader] = (pid, process)
+        pending = set(workers)
+        while pending and time.monotonic() < deadline:
+            for reader in wait(pending, timeout=max(0, deadline - time.monotonic())):
+                pid, _ = workers[reader]
+                try:
+                    rows[pid] = reader.recv()
+                except EOFError:
+                    rows[pid] = unavailable(pid, "unavailable", "A coleta do provedor foi interrompida.")
+                pending.remove(reader)
+        for reader in pending:
+            pid, _ = workers[reader]
+            rows[pid] = cached_fallback(pid, load_cache(pid), SourceError(
+                "unavailable", "O provedor excedeu o tempo de consulta."), time.time())
+        return [rows[pid] for pid in selected]
+    finally:
+        for reader, (_, process) in workers.items():
+            reader.close()
+            process.join(timeout=0.05)
+            if process.is_alive():
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    process.terminate()
+                process.join(timeout=0.2)
+                # Also reap a wallet CLI child that ignored SIGTERM.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                if process.is_alive():
+                    process.kill()
+                process.join()
+            process.close()
+
+
 def collect(selected=PROVIDERS, force=False):
+    deadline = time.monotonic() + COLLECTION_TIMEOUT
     CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = os.open(CACHE / "collection.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            rows = [cached_fallback(pid, load_cache(pid), SourceError("unavailable", "Atualização em andamento."), time.time()) for pid in selected]
-        else:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-                futures = {pid: pool.submit(collect_provider, pid, force) for pid in selected}
-                rows = [futures[pid].result() for pid in selected]
+        waited = False
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                rows = collect_parallel(selected, force and not waited, deadline)
+                break
+            except BlockingIOError:
+                waited = True
+                if time.monotonic() >= deadline:
+                    rows = [cached_fallback(pid, load_cache(pid), SourceError(
+                        "unavailable", "Atualização em andamento."), time.time()) for pid in selected]
+                    break
+                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         return {"schema_version": 1, "generated_at": time.time(), "max_age_sec": MAX_AGE, "providers": rows}
     finally:
         os.close(lock)

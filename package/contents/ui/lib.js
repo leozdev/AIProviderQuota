@@ -19,6 +19,11 @@ function liveWindow(provider, window, nowMs, maxAge) {
         && (!window.resets_at || window.resets_at * 1000 > nowMs);
 }
 
+function isStale(provider, nowMs, maxAge) {
+    return provider.state === "stale"
+        || !!(provider.fetched_at && !validProvider(provider, nowMs, maxAge));
+}
+
 function percent(value) {
     if (typeof value !== "number" || !isFinite(value)) return "—";
     return value.toLocaleString(Qt.locale("pt_BR"), "f", value % 1 === 0 ? 0 : 1) + "%";
@@ -68,9 +73,7 @@ function providerTooltip(provider, windows, nowMs, maxAge) {
         return window.label + ": " + valueFor(provider, window, nowMs, maxAge)
             + " disponível · " + countdown(window.resets_at, nowMs);
     }
-    var stale = provider.state === "stale"
-        || (provider.fetched_at && !validProvider(provider, nowMs, maxAge));
-    var lines = [provider.label + (stale ? " · Dados antigos" : "")];
+    var lines = [provider.label + (isStale(provider, nowMs, maxAge) ? " · Dados antigos" : "")];
     for (var i = 0; i < windows.length; i++) lines.push(describe(windows[i]));
     var critical = headline(provider, nowMs, maxAge);
     if (critical && !windows.some(function (window) { return window.key === critical.key; }))

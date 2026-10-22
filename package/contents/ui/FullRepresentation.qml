@@ -109,7 +109,7 @@ PC.Page {
                         readonly property bool current: Lib.validProvider(modelData, full.nowMs, full.maxAge)
                         readonly property var headline: Lib.headline(modelData, full.nowMs, full.maxAge)
                         readonly property var displayedWindows: Lib.displayWindows(modelData)
-                        readonly property bool stale: modelData.state === "stale" || (modelData.fetched_at && !current)
+                        readonly property bool stale: Lib.isStale(modelData, full.nowMs, full.maxAge)
 
                         PC.ItemDelegate {
                             id: providerButton

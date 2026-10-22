@@ -85,9 +85,11 @@ Alterações na seleção de provedores durante uma consulta entram na coleta se
 
 ## Falhas e privacidade
 
-A coleta consulta as quotas sem enviar prompts aos modelos. Cada provedor possui timeout e estado próprios; respostas HTTP 429 respeitam o tempo de espera indicado pelo provedor.
+A coleta consulta as quotas sem enviar prompts aos modelos. Cada provedor possui estado próprio; respostas HTTP 429 respeitam o tempo de espera indicado pelo provedor. A coleta tem um prazo total de 20 segundos, preservando os resultados concluídos se outro provedor demorar demais. Instâncias simultâneas aguardam a coleta em andamento e reutilizam seu cache recente dentro desse mesmo prazo.
 
-Em uma falha temporária, o último valor válido pode aparecer por até dez minutos, marcado como antigo e mantendo o horário original. Quando uma janela atinge o reset, o percentual deixa de ser mostrado até uma nova resposta válida. Uma autenticação recusada invalida os valores em cache daquele provedor.
+Em uma falha temporária, o último valor válido pode aparecer por até dez minutos, marcado como antigo e mantendo o horário original. Quando uma janela atinge o reset, o percentual deixa de ser mostrado até uma nova resposta válida. Uma autenticação recusada pelo Claude ou Ollama invalida os valores em cache daquele provedor.
+
+No Codex, erros do RPC não distinguem uma recusa de autenticação de outras falhas: o coletor pode usar um registro local recente, identificado como tal, ou o cache marcado como antigo. Esses dados também expiram em dez minutos e não confirmam que o login continua ativo.
 
 O cache fica em `~/.cache/ai-quotas/` e contém quotas e horários. Tokens e a chave do Ollama não são incluídos nesses relatórios. As credenciais do Codex e Claude permanecem sob controle dos respectivos clientes; a chave do Ollama é lida do KWallet.
 
