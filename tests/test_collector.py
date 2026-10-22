@@ -385,6 +385,30 @@ with (root/'collection.lock').open('w') as lock:
             self.assertEqual(value['state'], 'ok')
             self.assertEqual(value['message'], '')
 
+    def test_peer_cache_is_also_reused_if_worker_budget_expires_after_lock_acquisition(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            sample = collector.report('codex', 'test', [collector.quota_window('7d', 'Semana', 72, self.now + 60)])
+            collector.save_cache('codex', {'snapshot': sample, 'next_allowed_at': 0})
+            with (Path(directory) / 'collection.lock').open('w') as lock:
+                def slow(*args):
+                    time.sleep(30)
+                with patch.object(collector, 'collect_provider', side_effect=slow):
+                    value = collector.collect_parallel(['codex'], False, time.monotonic() + .05,
+                                                       lock.fileno(), reuse_fresh=True)[0]
+            self.assertEqual(value['state'], 'ok')
+            self.assertEqual(value['fetched_at'], sample['fetched_at'])
+
+    def test_lock_deadline_does_not_mask_known_provider_backoff(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            sample = collector.report('claude', 'test', [collector.quota_window('7d', 'Semana', 72, self.now + 60)])
+            collector.save_cache('claude', {'snapshot': sample, 'next_allowed_at': self.now + 90})
+            with (Path(directory) / 'collection.lock').open('w') as lock:
+                collector.fcntl.flock(lock, collector.fcntl.LOCK_EX)
+                with patch.object(collector, 'COLLECTION_TIMEOUT', .05):
+                    value = collector.collect(['claude'])['providers'][0]
+            self.assertEqual(value['state'], 'stale')
+            self.assertNotEqual(value['message'], '')
+
     def test_rpc_timeout_also_terminates_and_reaps_child(self):
         real_popen = subprocess.Popen
         children = []

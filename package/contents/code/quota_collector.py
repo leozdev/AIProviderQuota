@@ -497,6 +497,9 @@ def cached_fallback(pid, cached, error, now):
 
 
 def fresh_snapshot(cached, now):
+    next_allowed = number(cached.get("next_allowed_at"))
+    if next_allowed is not None and next_allowed > now:
+        return None
     snapshot = cached.get("snapshot")
     if isinstance(snapshot, dict):
         fetched = timestamp(snapshot.get("fetched_at"))
@@ -542,7 +545,7 @@ def provider_worker(connection, pid, force, lock_fd):
         connection.close()
 
 
-def collect_parallel(selected, force, deadline, lock_fd):
+def collect_parallel(selected, force, deadline, lock_fd, reuse_fresh=False):
     context = multiprocessing.get_context("fork")  # Plasma targets Linux.
     workers, rows = {}, {}
     try:
@@ -570,8 +573,10 @@ def collect_parallel(selected, force, deadline, lock_fd):
                 pending.remove(reader)
         for reader in pending:
             pid, _ = workers[reader]
-            rows[pid] = cached_fallback(pid, load_cache(pid), SourceError(
-                "unavailable", "O provedor excedeu o tempo de consulta."), time.time())
+            cached, now = load_cache(pid), time.time()
+            fresh = fresh_snapshot(cached, now) if reuse_fresh else None
+            rows[pid] = fresh or cached_fallback(pid, cached, SourceError(
+                "unavailable", "O provedor excedeu o tempo de consulta."), now)
         return [rows[pid] for pid in selected]
     finally:
         for reader, (_, process) in workers.items():
@@ -608,7 +613,7 @@ def collect(selected=PROVIDERS, force=False):
                 waited = True
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
             else:
-                rows = collect_parallel(selected, force and not waited, deadline, lock)
+                rows = collect_parallel(selected, force and not waited, deadline, lock, reuse_fresh=waited)
                 break
         if rows is None:
             rows = []
