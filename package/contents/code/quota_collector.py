@@ -496,17 +496,25 @@ def cached_fallback(pid, cached, error, now):
     return unavailable(pid, error.state, error.message)
 
 
+def fresh_snapshot(cached, now):
+    snapshot = cached.get("snapshot")
+    if isinstance(snapshot, dict):
+        fetched = timestamp(snapshot.get("fetched_at"))
+        windows = valid_windows(snapshot, now)
+        if fetched and 0 <= now - fetched < 20 and windows:
+            return {**snapshot, "windows": windows}
+    return None
+
+
 def collect_provider(pid, force=False, now=None):
     now = time.time() if now is None else now
     cached = load_cache(pid)
     next_allowed = number(cached.get("next_allowed_at"))
     if next_allowed is not None and next_allowed > now:
         return cached_fallback(pid, cached, SourceError("rate_limited", "Aguardando o limite de consultas do provedor."), now)
-    snapshot = cached.get("snapshot")
-    if not force and isinstance(snapshot, dict):
-        fetched = timestamp(snapshot.get("fetched_at"))
-        if fetched and 0 <= now - fetched < 20 and valid_windows(snapshot, now):
-            return {**snapshot, "windows": valid_windows(snapshot, now)}
+    fresh = fresh_snapshot(cached, now) if not force else None
+    if fresh:
+        return fresh
     try:
         value = {"codex": provider_codex, "claude": provider_claude, "ollama": provider_ollama}[pid]()
         value["windows"] = valid_windows(value, time.time())
@@ -523,9 +531,10 @@ def collect_provider(pid, force=False, now=None):
         return unavailable(pid, "unavailable", "Não foi possível interpretar a resposta do provedor.")
 
 
-def provider_worker(connection, pid, force):
+def provider_worker(connection, pid, force, lock_fd):
     # A separate process lets the parent enforce a wall-clock deadline even
     # during DNS resolution. Wallet CLI children share this process group.
+    os.close(lock_fd)  # Only the supervising parent owns the collection lock.
     os.setsid()
     try:
         connection.send(collect_provider(pid, force))
@@ -533,18 +542,20 @@ def provider_worker(connection, pid, force):
         connection.close()
 
 
-def collect_parallel(selected, force, deadline):
+def collect_parallel(selected, force, deadline, lock_fd):
     context = multiprocessing.get_context("fork")  # Plasma targets Linux.
     workers, rows = {}, {}
     try:
         for pid in selected:
             reader, writer = context.Pipe(duplex=False)
-            process = context.Process(target=provider_worker, args=(writer, pid, force))
+            process = context.Process(target=provider_worker, args=(writer, pid, force, lock_fd))
             try:
                 process.start()
-            except Exception:
+            except OSError:
                 reader.close()
-                raise
+                process.close()
+                rows[pid] = unavailable(pid, "unavailable", "Não foi possível iniciar a coleta do provedor.")
+                continue
             finally:
                 writer.close()
             workers[reader] = (pid, process)
@@ -565,21 +576,21 @@ def collect_parallel(selected, force, deadline):
     finally:
         for reader, (_, process) in workers.items():
             reader.close()
-            process.join(timeout=0.05)
-            if process.is_alive():
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    process.terminate()
-                process.join(timeout=0.2)
-                # Also reap a wallet CLI child that ignored SIGTERM.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            # Clean the group even after a successful result: an app-server
+            # may leave a helper behind after its own PID exits.
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
                 if process.is_alive():
-                    process.kill()
-                process.join()
+                    process.terminate()
+            process.join(timeout=0.2)
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            if process.is_alive():
+                process.kill()
+            process.join()
             process.close()
 
 
@@ -589,18 +600,22 @@ def collect(selected=PROVIDERS, force=False):
     lock = os.open(CACHE / "collection.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
         waited = False
-        while True:
+        rows = None
+        while time.monotonic() < deadline:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                rows = collect_parallel(selected, force and not waited, deadline)
-                break
             except BlockingIOError:
                 waited = True
-                if time.monotonic() >= deadline:
-                    rows = [cached_fallback(pid, load_cache(pid), SourceError(
-                        "unavailable", "Atualização em andamento."), time.time()) for pid in selected]
-                    break
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+            else:
+                rows = collect_parallel(selected, force and not waited, deadline, lock)
+                break
+        if rows is None:
+            rows = []
+            for pid in selected:
+                cached, now = load_cache(pid), time.time()
+                rows.append(fresh_snapshot(cached, now) or cached_fallback(pid, cached, SourceError(
+                    "unavailable", "Atualização em andamento."), now))
         return {"schema_version": 1, "generated_at": time.time(), "max_age_sec": MAX_AGE, "providers": rows}
     finally:
         os.close(lock)

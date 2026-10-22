@@ -21,6 +21,17 @@ class QuotaContracts(unittest.TestCase):
     def setUp(self):
         self.now = time.time()
 
+    def assert_stopped(self, pid):
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            try:
+                if Path('/proc/%d/stat' % pid).read_text().split()[2] == 'Z':
+                    return  # No longer running; init will reap the orphan.
+            except FileNotFoundError:
+                return
+            time.sleep(.01)
+        self.fail('process %d is still running' % pid)
+
     def test_zero_is_reported_and_missing_is_not_zero(self):
         self.assertEqual(collector.quota_window("x", "X", 0)["remaining_percent"], 0)
         self.assertIsNone(collector.quota_window("x", "X", None))
@@ -237,9 +248,7 @@ sys.stdin.read()
             self.assertEqual(rows[2]['fetched_at'], self.now - 30)
             self.assertEqual(rows[2]['windows'][0]['remaining_percent'], 42)
             child_pid = int(marker.read_text())
-            # A short-lived zombie can await init's reaper; it is no longer running.
-            status = Path('/proc/%d/stat' % child_pid)
-            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
+            self.assert_stopped(child_pid)
 
     def test_provider_deadline_also_stops_codex_app_server_and_releases_lock(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
@@ -253,13 +262,78 @@ sys.stdin.read()
                 value = collector.collect(['codex'], force=True)['providers'][0]
             self.assertEqual(value['state'], 'unavailable')
             child_pid = int(marker.read_text())
-            status = Path('/proc/%d/stat' % child_pid)
-            self.assertTrue(not status.exists() or status.read_text().split()[2] == 'Z')
+            self.assert_stopped(child_pid)
             lock = os.open(Path(directory) / 'collection.lock', os.O_RDWR)
             try:
                 collector.fcntl.flock(lock, collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
             finally:
                 os.close(lock)
+
+    def test_successful_codex_query_also_stops_app_servers_descendants(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            marker = Path(directory) / 'grandchild.pid'
+            fake = '''import json, pathlib, subprocess, sys, time
+marker=sys.argv[1]
+child_code='import os,pathlib,signal,sys,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));time.sleep(30)'
+subprocess.Popen([sys.executable,'-c',child_code,marker],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+while not pathlib.Path(marker).exists(): time.sleep(.01)
+sys.stdin.readline()
+print(json.dumps({'id':1,'result':{}}),flush=True)
+sys.stdin.readline();sys.stdin.readline()
+print(json.dumps({'id':2,'result':{'rateLimits':{'primary':{'usedPercent':28,'windowDurationMins':10080,'resetsAt':2000000000}}}}),flush=True)
+sys.stdin.read()
+'''
+            real_popen = subprocess.Popen
+            def launch(*args, **kwargs):
+                return real_popen([sys.executable, '-c', fake, str(marker)], **kwargs)
+            try:
+                with patch.object(collector.subprocess, 'Popen', side_effect=launch):
+                    value = collector.collect(['codex'], force=True)['providers'][0]
+                self.assertEqual(value['state'], 'ok')
+                self.assert_stopped(int(marker.read_text()))
+            finally:
+                if marker.exists():
+                    try:
+                        os.kill(int(marker.read_text()), collector.signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
+    def test_worker_does_not_keep_parent_collection_lock_open(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            cache = Path(directory)
+            marker = cache / 'worker-ready'
+            def slow(*args):
+                marker.touch()
+                time.sleep(30)
+            context = collector.multiprocessing.get_context('fork')
+            reader, writer = context.Pipe(duplex=False)
+            with (cache / 'collection.lock').open('w') as lock:
+                collector.fcntl.flock(lock, collector.fcntl.LOCK_EX)
+                process = context.Process(target=collector.provider_worker, args=(writer, 'ollama', True, lock.fileno()))
+                with patch.object(collector, 'collect_provider', side_effect=slow):
+                    process.start()
+                writer.close()
+                try:
+                    deadline = time.monotonic() + 2
+                    while not marker.exists() and time.monotonic() < deadline:
+                        time.sleep(.01)
+                    self.assertTrue(marker.exists())
+                    lock.close()  # Simulates the supervising parent's descriptor going away.
+                    with (cache / 'collection.lock').open('r') as next_lock:
+                        collector.fcntl.flock(next_lock, collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
+                finally:
+                    process.terminate()
+                    process.join(timeout=2)
+                    process.close()
+                    reader.close()
+
+    def test_failed_fork_is_not_retried_as_lock_contention(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            with patch('multiprocessing.process.BaseProcess.start', side_effect=BlockingIOError('process limit')) as start:
+                value = collector.collect(['codex'])['providers'][0]
+            self.assertEqual(start.call_count, 1)
+            self.assertEqual(value['state'], 'unavailable')
+            self.assertIn('iniciar', value['message'])
 
     def test_second_instance_waits_and_reuses_first_instances_fresh_cache(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
@@ -299,6 +373,17 @@ with (root/'collection.lock').open('w') as lock:
                 self.assertIn('em andamento', value['message'])
             finally:
                 os.close(lock)
+
+    def test_lock_deadline_preserves_fresh_cache_from_other_instance(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
+            sample = collector.report('codex', 'test', [collector.quota_window('7d', 'Semana', 72, self.now + 60)])
+            collector.save_cache('codex', {'snapshot': sample, 'next_allowed_at': 0})
+            with (Path(directory) / 'collection.lock').open('w') as lock:
+                collector.fcntl.flock(lock, collector.fcntl.LOCK_EX)
+                with patch.object(collector, 'COLLECTION_TIMEOUT', .1):
+                    value = collector.collect(['codex'], force=True)['providers'][0]
+            self.assertEqual(value['state'], 'ok')
+            self.assertEqual(value['message'], '')
 
     def test_rpc_timeout_also_terminates_and_reaps_child(self):
         real_popen = subprocess.Popen
