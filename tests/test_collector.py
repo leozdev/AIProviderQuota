@@ -135,6 +135,7 @@ class QuotaContracts(unittest.TestCase):
         fake = '''import json, sys
 first=json.loads(sys.stdin.readline())
 assert first['method']=='initialize'
+assert first['params']['clientInfo']['version']==sys.argv[1]
 print(json.dumps({'id':1,'result':{}}),flush=True)
 assert json.loads(sys.stdin.readline())['method']=='initialized'
 assert json.loads(sys.stdin.readline())['method']=='account/rateLimits/read'
@@ -144,13 +145,67 @@ sys.stdin.read()
         real_popen = subprocess.Popen
         children = []
         def launch(*args, **kwargs):
-            child = real_popen([sys.executable, "-c", fake], **kwargs)
+            version = json.loads((ROOT / 'package/metadata.json').read_text())['KPlugin']['Version']
+            child = real_popen([sys.executable, "-c", fake, version], **kwargs)
             children.append(child)
             return child
         with patch.object(collector.subprocess, "Popen", side_effect=launch):
             result = collector.codex_rpc(timeout=3)
         self.assertEqual(result["primary"]["usedPercent"], 38)
         self.assertIsNotNone(children[0].poll())
+
+    def test_malformed_rpc_results_are_source_errors_and_reap_child(self):
+        real_popen = subprocess.Popen
+        for value in (None, [], {'rateLimitsByLimitId': []}, {'rateLimits': []}):
+            with self.subTest(value=value):
+                children = []
+                fake = "import json,sys; sys.stdin.readline(); print(json.dumps({'id':2,'result':" + repr(value) + "}),flush=True); sys.stdin.read()"
+                def launch(*args, **kwargs):
+                    child = real_popen([sys.executable, '-c', fake], **kwargs)
+                    children.append(child)
+                    return child
+                with patch.object(collector.subprocess, 'Popen', side_effect=launch):
+                    with self.assertRaises(collector.SourceError):
+                        collector.codex_rpc(timeout=1)
+                self.assertIsNotNone(children[0].poll())
+
+    def test_local_codex_skips_bad_rows_and_disappearing_candidates(self):
+        limits = {'primary': {'used_percent': 20, 'window_minutes': 300,
+                              'resets_at': self.now + 60}}
+        good = {'timestamp': self.now - 5, 'payload': {'type': 'token_count', 'rate_limits': limits}}
+        rows = [good, {'timestamp': self.now, 'payload': {'type': 'token_count', 'rate_limits': {}}},
+                {'payload': None, 'rate_limits': {}}, ['rate_limits'], 'rate_limits']
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, CODEX_HOME=directory):
+            sessions = Path(directory) / 'sessions'
+            sessions.mkdir()
+            valid = sessions / 'rollout-valid.jsonl'
+            valid.write_text('\n'.join(json.dumps(row) for row in rows))
+            missing = sessions / 'rollout-disappeared.jsonl'
+            with patch.object(Path, 'glob', return_value=iter([missing, valid])):
+                observed, snapshot = collector.codex_local_record(self.now)
+            self.assertEqual(observed, self.now - 5)
+            self.assertEqual(snapshot, limits)
+
+    def test_local_codex_reads_only_eight_newest_files_including_old_directories(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, CODEX_HOME=directory):
+            sessions = Path(directory) / 'sessions'
+            for index in range(12):
+                folder = sessions / ('2020' if index == 11 else '2026')
+                folder.mkdir(parents=True, exist_ok=True)
+                path = folder / ('rollout-%02d.jsonl' % index)
+                limits = {'primary': {'used_percent': index, 'window_minutes': 300, 'resets_at': self.now + 60}}
+                path.write_text(json.dumps({'timestamp': self.now - 12 + index,
+                                           'payload': {'type': 'token_count', 'rate_limits': limits}}))
+                os.utime(path, (self.now - 12 + index, self.now - 12 + index))
+            real_open, reads = Path.open, []
+            def read(path, *args, **kwargs):
+                reads.append(path)
+                return real_open(path, *args, **kwargs)
+            with patch.object(Path, 'open', read):
+                observed, snapshot = collector.codex_local_record(self.now)
+            self.assertEqual(len(reads), 8)
+            self.assertEqual(snapshot['primary']['used_percent'], 11)
+            self.assertEqual(observed, self.now - 1)
 
     def test_rpc_timeout_also_terminates_and_reaps_child(self):
         real_popen = subprocess.Popen

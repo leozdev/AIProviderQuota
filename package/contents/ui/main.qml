@@ -14,6 +14,9 @@ PlasmoidItem {
     property bool loading: false
     property string lastError: ""
     property string currentSource: ""
+    property string activeProviders: ""
+    property bool pendingRefresh: false
+    property bool pendingForce: false
     property int serial: 0
     property double nowMs: Date.now()
     readonly property int maxAge: 600
@@ -27,19 +30,33 @@ PlasmoidItem {
         if (!root.report)
             return root.loading ? i18n("Consultando…") : i18n("Aguardando consulta");
         return root.report.providers.map(function (p) {
-            var w = Lib.headline(p, root.nowMs, root.maxAge);
-            return p.label + ": " + (w ? w.label + " " + Lib.valueFor(p, w, root.nowMs, root.maxAge) : p.message || i18n("Dados indisponíveis"));
+            return Lib.providerSummary(p, root.nowMs, root.maxAge);
         }).join("\n");
     }
 
     function refresh(force) {
-        if (root.loading)
+        if (root.loading) {
+            root.pendingForce = root.pendingForce || force;
+            root.pendingRefresh = root.pendingForce || root.providers !== root.activeProviders;
             return;
+        }
+        root.activeProviders = root.providers;
         root.loading = true;
         root.serial++;
         root.currentSource = "AI_QUOTAS_RUN=" + root.serial + " /usr/bin/python3 " + Lib.quote(root.helperPath) + " --providers " + Lib.quote(root.providers) + (force ? " --force" : "");
         watchdog.restart();
         executable.connectSource(root.currentSource);
+    }
+
+    function finishRefresh() {
+        root.currentSource = "";
+        root.loading = false;
+        if (root.pendingRefresh) {
+            const force = root.pendingForce;
+            root.pendingRefresh = false;
+            root.pendingForce = false;
+            root.refresh(force);
+        }
     }
 
     P5Support.DataSource {
@@ -51,8 +68,6 @@ PlasmoidItem {
             if (sourceName !== root.currentSource)
                 return;
             watchdog.stop();
-            root.loading = false;
-            root.currentSource = "";
             try {
                 const parsed = JSON.parse(data["stdout"] || "");
                 if (parsed.schema_version !== 1 || !Array.isArray(parsed.providers))
@@ -62,6 +77,7 @@ PlasmoidItem {
             } catch (e) {
                 root.lastError = i18n("Não foi possível atualizar. Tente novamente.");
             }
+            root.finishRefresh();
         }
     }
 
@@ -82,9 +98,8 @@ PlasmoidItem {
         interval: 30000
         onTriggered: {
             executable.disconnectSource(root.currentSource);
-            root.currentSource = "";
-            root.loading = false;
             root.lastError = i18n("A consulta demorou demais. Tente novamente.");
+            root.finishRefresh();
         }
     }
     onProvidersChanged: Qt.callLater(function () {

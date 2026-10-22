@@ -11,12 +11,15 @@ MouseArea {
     property var report: null
     property double nowMs: Date.now()
     property int maxAge: 600
+    readonly property string quotaDescription: compact.report ? compact.report.providers.map(function (p) {
+        return Lib.providerSummary(p, compact.nowMs, compact.maxAge);
+    }).join("\n") : ""
     implicitWidth: chips.implicitWidth + 12
     implicitHeight: Kirigami.Units.iconSizes.smallMedium
     activeFocusOnTab: true
     onPressed: compact.forceActiveFocus()
     Accessible.role: Accessible.Button
-    Accessible.name: i18n("Abrir cotas de IA")
+    Accessible.name: i18n("Abrir cotas de IA") + (quotaDescription ? "\n" + quotaDescription : "")
     Keys.onReturnPressed: compact.clicked(null)
     Keys.onEnterPressed: compact.clicked(null)
     Keys.onSpacePressed: compact.clicked(null)
@@ -31,16 +34,15 @@ MouseArea {
                 required property var modelData
                 spacing: 4
                 readonly property var headline: Lib.headline(modelData, compact.nowMs, compact.maxAge)
-                Rectangle {
-                    implicitWidth: 5
-                    implicitHeight: 14
-                    radius: 2
-                    color: Lib.colorFor(chip.modelData.id)
+                Image {
+                    objectName: "panel_icon_" + chip.modelData.id
+                    source: Qt.resolvedUrl("../icons/" + chip.modelData.id + ".svg")
+                    sourceSize.width: 16
+                    sourceSize.height: 16
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    fillMode: Image.PreserveAspectFit
                     opacity: chip.headline ? 1 : 0.35
-                }
-                PC.Label {
-                    text: chip.modelData.label === "Ollama Cloud" ? "O" : chip.modelData.label.charAt(0)
-                    font.bold: true
                 }
                 PC.Label {
                     text: chip.headline ? Lib.valueFor(chip.modelData, chip.headline, compact.nowMs, compact.maxAge) : "—"

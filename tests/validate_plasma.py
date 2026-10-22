@@ -1,4 +1,4 @@
-"""Load the actual plasmoid in a private Plasma/Wayland session and collect live data."""
+"""Load the actual plasmoid in a private Plasma/Wayland session."""
 import json
 import os
 from pathlib import Path
@@ -11,6 +11,8 @@ if os.environ.get('AI_QUOTAS_ISOLATED_TEST') != '1':
     raise SystemExit('Run through run_wayland_validation.py --plasma')
 ROOT = Path(__file__).resolve().parents[1]
 result = {'environment': 'isolated Plasma shell on KWin Wayland Virtual-0', 'checks': {}}
+fixture = os.environ.get('AI_QUOTAS_TEST_FIXTURE') == '1'
+result['dataSource'] = 'synthetic fixture' if fixture else 'live accounts'
 log_path = Path(os.environ['XDG_CACHE_HOME']) / 'plasmashell.log'
 
 def bus(service, object_path, method, *args):
@@ -22,6 +24,19 @@ def bus(service, object_path, method, *args):
 
 def script(code):
     return bus('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', code)
+
+def wait_records(name, count):
+    path = Path(os.environ['XDG_CACHE_HOME']) / ('fixture-' + name + '.jsonl')
+    deadline = time.monotonic() + 6
+    while time.monotonic() < deadline:
+        try:
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            if len(rows) >= count:
+                return rows
+        except (OSError, ValueError):
+            pass
+        time.sleep(.05)
+    raise RuntimeError('Timed out waiting for fixture ' + name)
 
 with log_path.open('w') as log:
     shell = subprocess.Popen(['/usr/bin/plasmashell', '--no-respawn'], stdout=log, stderr=log)
@@ -44,11 +59,24 @@ with log_path.open('w') as log:
         widget_id = int(script('var d=desktopById(%d);var w=d.addWidget("org.leoz.aiquotas");print(w.id);' % desktop))
         print('VALIDATION: widget created ' + str(widget_id), flush=True)
         result['widgetId'] = widget_id
+        if fixture:
+            wait_records('requests', 1)
+            config = 'var w=desktopById(%d).widgetById(%d);w.currentConfigGroup=["General"];' % (desktop, widget_id)
+            script(config + 'w.writeConfig("showClaude",false);')
+            requests = wait_records('requests', 2)
+            wait_records('completions', 2)
+            result['checks']['configuration_changed_during_query_is_collected_immediately'] = requests[:2] == [
+                ['codex', 'claude', 'ollama'], ['codex', 'ollama']]
+            script(config + 'w.writeConfig("showClaude",true);')
+            wait_records('completions', 3)
+            time.sleep(.3)
+            result['checks']['no_duplicate_initial_or_configuration_queries'] = len(wait_records('requests', 3)) == 3
+            result['fixtureRequests'] = wait_records('requests', 3)
         cache = Path(os.environ['XDG_CACHE_HOME']) / 'ai-quotas'
         deadline = time.monotonic() + 20
         snapshots = {}
         cached = {}
-        while time.monotonic() < deadline:
+        while not fixture and time.monotonic() < deadline:
             try:
                 cached = {pid: json.loads((cache / (pid + '.json')).read_text())
                           for pid in ['codex', 'claude', 'ollama']}
@@ -59,14 +87,14 @@ with log_path.open('w') as log:
             time.sleep(0.25)
         # UI integration must complete even when a remote provider limits queries.
         # Report live availability separately; never turn that state into an OK quota.
-        result['checks']['executable_engine_finished_all_providers'] = len(cached) == 3
-        result['liveSourcesAllAvailable'] = bool(snapshots) and all(
-            row and row.get('state') == 'ok' for row in snapshots.values())
-        result['liveSourceStates'] = {
-            pid: (row['state'] if row else 'rate_limited' if cached[pid].get('next_allowed_at', 0) > time.time() else 'unavailable')
-            for pid, row in snapshots.items()}
-        print('VALIDATION: collector states ' + json.dumps({p: r.get('state') if r else None for p, r in snapshots.items()}), flush=True)
-        (ROOT / 'evidence/plasma-live-sources.json').write_text(json.dumps(snapshots, ensure_ascii=False, indent=2) + '\n')
+        if not fixture:
+            result['checks']['executable_engine_finished_all_providers'] = len(cached) == 3
+            result['liveSourcesAllAvailable'] = bool(snapshots) and all(
+                row and row.get('state') == 'ok' for row in snapshots.values())
+            result['liveSourceStates'] = {
+                pid: (row['state'] if row else 'rate_limited' if cached[pid].get('next_allowed_at', 0) > time.time() else 'unavailable')
+                for pid, row in snapshots.items()}
+            (ROOT / 'evidence/plasma-live-sources.json').write_text(json.dumps(snapshots, ensure_ascii=False, indent=2) + '\n')
         geometry = json.loads(script('var g=desktopById(%d).widgetById(%d).geometry;print(JSON.stringify({x:g.x,y:g.y,width:g.width,height:g.height}));' % (desktop, widget_id)))
         result['geometry'] = geometry
         result['checks']['full_representation_has_usable_size'] = geometry['width'] >= 280 and geometry['height'] >= 180
@@ -77,10 +105,10 @@ with log_path.open('w') as log:
                                   '--output', str(image_path)], capture_output=True, text=True, timeout=12)
         print('VALIDATION: screenshot result ' + str(capture.returncode) + ', file=' + str(image_path.exists()), flush=True)
         margin = 8
+        x, y = max(0, int(geometry['x']) - margin), max(0, int(geometry['y']) - margin)
         if capture.returncode == 0 and image_path.exists():
             image = Image.open(image_path)
             image.save(ROOT / 'evidence/plasma-desktop.png')
-            x, y = max(0, int(geometry['x']) - margin), max(0, int(geometry['y']) - margin)
             cropped = image.crop((x, y, x + int(geometry['width']) + margin * 2, y + int(geometry['height']) + margin * 2))
             cropped.save(ROOT / 'evidence/plasma-widget.png')
             result['checks']['native_plasma_screenshot'] = True
@@ -97,7 +125,6 @@ with log_path.open('w') as log:
                 image.crop((x, y, x + int(geometry['width']) + margin * 2, y + int(geometry['height']) + margin * 2)).save(ROOT / ('evidence/plasma-widget-' + name + '.png'))
                 theme_images.append(name)
         result['checks']['native_light_and_dark_screenshots'] = theme_images == ['light', 'dark']
-        (ROOT / 'evidence/plasma-live-sources.json').write_text(json.dumps(snapshots, ensure_ascii=False, indent=2) + '\n')
         log.flush()
         log_text = log_path.read_text()
         errors = [line for line in log_text.splitlines() if 'org.leoz.aiquotas' in line

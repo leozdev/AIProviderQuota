@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 (ROOT / 'evidence').mkdir(exist_ok=True)
 parser = argparse.ArgumentParser()
 parser.add_argument('--plasma', action='store_true')
+parser.add_argument('--plasma-fixture', action='store_true', help='Native Plasma with fake collector; no accounts')
 parser.add_argument('--work-dir', type=Path, default=Path(tempfile.gettempdir()))
 args = parser.parse_args()
+args.plasma = args.plasma or args.plasma_fixture
 args.work_dir.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) as temporary:
     base = Path(temporary)
@@ -21,6 +23,9 @@ with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) 
         (base / folder).mkdir(mode=0o700)
     plugin = base / 'data/plasma/plasmoids/org.leoz.aiquotas'
     shutil.copytree(ROOT / 'package', plugin)
+    if args.plasma_fixture:
+        shutil.copy2(ROOT / 'tests/fixture_collector.py', plugin / 'contents/code/quota_collector.py')
+        shutil.copy2(ROOT / 'tests/fixtures/quota-demo.json', plugin / 'contents/code/quota-demo.json')
     kdeglobals = Path.home() / '.config/kdeglobals'
     if kdeglobals.exists():
         shutil.copy2(kdeglobals, base / 'config/kdeglobals')
@@ -35,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) 
     (base / 'config/user-dirs.dirs').write_text('XDG_DESKTOP_DIR="' + str(base / 'data/Desktop') + '"\n')
     # Only the collector's existing wallet CLI calls use the user's wallet bus.
     # The compositor, shell, and test commands use their separate D-Bus session.
-    for binary in ['qdbus6', 'kwallet-query']:
+    for binary in (['qdbus6', 'kwallet-query'] if args.plasma and not args.plasma_fixture else []):
         wrapper = base / 'bin' / binary
         import shlex
         wrapper.write_text('#!/bin/sh\nexport DBUS_SESSION_BUS_ADDRESS=' + shlex.quote(real_bus)
@@ -52,6 +57,8 @@ with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) 
         env['LIBGL_ALWAYS_SOFTWARE'] = '1'
         env['QSG_RHI_BACKEND'] = 'opengl'
         env.pop('QT_QUICK_BACKEND', None)
+    if args.plasma_fixture:
+        env['AI_QUOTAS_TEST_FIXTURE'] = '1'
     env.pop('WAYLAND_SOCKET', None)
     child = ROOT / 'tests' / ('validate_plasma.py' if args.plasma else 'validate_ui.py')
     command = ['dbus-run-session', '--', 'kwin_wayland', '--virtual', '--width', '1024',

@@ -169,6 +169,7 @@ PC.Page {
                                                 objectName: "bar_" + provider.modelData.id + "_" + window.modelData.key
                                                 Layout.fillWidth: true
                                                 value: window.hasPercent ? Math.max(0, Math.min(100, window.modelData.remaining_percent)) : 0
+                                                hasPercent: window.hasPercent
                                                 opacity: provider.stale ? 0.6 : 1
                                                 caption: Lib.shortWindowLabel(window.modelData)
                                                 inkColor: full.inkColor
@@ -204,12 +205,7 @@ PC.Page {
                                 }
                             }
                             PC.ToolTip.visible: hovered
-                            PC.ToolTip.text: provider.modelData.label + (provider.stale ? " · " + i18n("Dados antigos") : "")
-                                + "\n" + provider.displayedWindows.map(function (w) {
-                                    return w.label + ": " + Lib.valueFor(provider.modelData, w, full.nowMs, full.maxAge) + " " + i18n("disponível")
-                                        + " · " + Lib.countdown(w.resets_at, full.nowMs);
-                                }).join("\n")
-                                + (provider.modelData.message ? "\n" + provider.modelData.message : "")
+                            PC.ToolTip.text: Lib.providerTooltip(provider.modelData, provider.displayedWindows, full.nowMs, full.maxAge)
                         }
 
                         ColumnLayout {

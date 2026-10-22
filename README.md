@@ -14,9 +14,10 @@ Widget para **KDE Plasma 6** que reúne as cotas disponíveis do **Codex**, **Cl
 - Temas Automático, Claro e Escuro; opacidade do fundo ajustável de 0 a 100%.
 - Cartão de 300 × 180 px, com barras de 4 px e detalhes ao clicar em cada provedor.
 - Atualização automática a cada dois minutos, configurável entre 1 e 15 minutos.
-- Representação compacta para o painel do Plasma.
+- Representação compacta para o painel, com ícones distintos e nomes/valores acessíveis ao leitor de tela.
 
 O widget acompanha as **assinaturas e ferramentas** dos provedores. Cada barra representa a porcentagem **restante** da janela informada pela conta. O Ollama também aceita contas com franquia mensal em dólares, mantendo os créditos extras separados.
+Quando a conta informa apenas um saldo em dólares, o valor aparece sem barra de percentual.
 
 ## Requisitos
 
@@ -78,6 +79,9 @@ Nas configurações, selecione os provedores, o intervalo de atualização, o te
 - Clique na linha para expandir valores, renovação completa e horário da coleta.
 - Use o botão de atualizar para solicitar uma nova consulta.
 - No painel, o indicador mostra a janela com menor percentual disponível de cada provedor.
+- Se essa janela não estiver entre as duas barras, a dica identifica a quota mais restritiva. Os detalhes mostram todas as janelas retornadas.
+
+Alterações na seleção de provedores durante uma consulta entram na coleta seguinte, iniciada assim que a consulta atual termina.
 
 ## Falhas e privacidade
 
@@ -89,7 +93,7 @@ O cache fica em `~/.cache/ai-quotas/` e contém quotas e horários. Tokens e a c
 
 ## Desenvolvimento e validação
 
-O coletor Python usa a biblioteca padrão na coleta normal e entrega JSON normalizado ao QML. A interface fica em `package/contents/ui/` e o coletor em `package/contents/code/quota_collector.py`.
+O coletor Python usa a biblioteca padrão na coleta normal e entrega JSON normalizado ao QML. A interface fica em `package/contents/ui/` e o coletor em `package/contents/code/quota_collector.py`. A versão enviada às fontes vem de `package/metadata.json`.
 
 Os testes unitários usam respostas simuladas e não precisam de contas:
 
@@ -110,6 +114,9 @@ Os testes gráficos opcionais exigem KWin, PySide6, Pillow, Spectacle e `dbus-ru
 # Renderização com dados fictícios, sem consultar as contas:
 python3 tests/run_wayland_validation.py
 
+# Integração nativa e mudanças durante uma consulta, com dados fictícios:
+python3 tests/run_wayland_validation.py --plasma-fixture
+
 # Integração nativa: consulta as contas locais e acessa o KWallet:
 python3 tests/run_wayland_validation.py --plasma
 ```
@@ -122,7 +129,7 @@ Os resultados são gravados em `evidence/`, ignorado pelo Git. O teste visual us
 bash uninstall.sh
 ```
 
-O script remove as instâncias de **Cotas de IA** e o pacote instalado. A chave do Ollama é preservada no KWallet. Para apagá-la, remova a entrada indicada acima pelo gerenciador de carteiras. O cache pode ser removido separadamente em `~/.cache/ai-quotas/`.
+O script remove as instâncias de **Cotas de IA** e o pacote instalado. Se não conseguir acessar a sessão do Plasma, avisa e continua removendo o pacote. A chave do Ollama é preservada no KWallet. Para apagá-la, remova a entrada indicada acima pelo gerenciador de carteiras. O cache pode ser removido separadamente em `~/.cache/ai-quotas/`.
 
 ## Limitações
 

@@ -10,6 +10,7 @@ PC.ProgressBar {
     property string caption: ""
     property string valueText: "—"
     property string valueObjectName: ""
+    property bool hasPercent: true
     property color inkColor: Kirigami.Theme.textColor
     property color accentColor: Kirigami.Theme.highlightColor
     from: 0
@@ -17,6 +18,7 @@ PC.ProgressBar {
     padding: 0
     implicitHeight: Math.max(16, valueLabel.implicitHeight)
     background: null
+    Accessible.role: hasPercent ? Accessible.ProgressBar : Accessible.StaticText
     contentItem: RowLayout {
         spacing: 6
         PC.Label {
@@ -32,6 +34,7 @@ PC.ProgressBar {
             objectName: meter.objectName + "_track"
             Layout.fillWidth: true
             Layout.preferredHeight: 4
+            opacity: meter.hasPercent ? 1 : 0
             Rectangle {
                 anchors.fill: parent
                 radius: 2

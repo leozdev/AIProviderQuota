@@ -9,6 +9,7 @@ import concurrent.futures
 import datetime as dt
 import fcntl
 import getpass
+import heapq
 import json
 import math
 import os
@@ -23,7 +24,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.0.0"
+VERSION = json.loads((Path(__file__).resolve().parents[2] / "metadata.json").read_text())["KPlugin"]["Version"]
 FOLDER = "AI Quotas"
 ENTRY = "ollama-cloud-api-key"
 MAX_AGE = 600
@@ -299,9 +300,15 @@ def codex_rpc(timeout=7):
                         send({"method": "initialized", "params": {}})
                         send({"id": 2, "method": "account/rateLimits/read", "params": {}})
                     if value.get("id") == 2:
-                        result = value.get("result", {})
-                        by_id = result.get("rateLimitsByLimitId") or {}
-                        return by_id.get("codex") or result.get("rateLimits")
+                        result = value.get("result")
+                        if isinstance(result, dict):
+                            by_id = result.get("rateLimitsByLimitId")
+                            snapshot = by_id.get("codex") if isinstance(by_id, dict) else None
+                            if not isinstance(snapshot, dict) or not snapshot:
+                                snapshot = result.get("rateLimits")
+                            if isinstance(snapshot, dict):
+                                return snapshot
+                        raise SourceError("unavailable", "O cliente Codex não retornou limites válidos.")
             if process.poll() is not None and not selector.get_map():
                 break
         raise SourceError("unavailable", "A consulta do Codex demorou demais.")
@@ -335,9 +342,17 @@ def codex_rpc(timeout=7):
 
 def codex_local_record(now):
     root = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "sessions"
-    files = sorted(root.glob("**/rollout-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:8]
+    def candidates():
+        # A long-lived active session may be in an old date directory. Select
+        # by file modification time, retaining only eight candidates in memory.
+        for path in root.glob("**/rollout-*.jsonl"):
+            try:
+                yield (path.stat().st_mtime, path)
+            except OSError:
+                continue
+    files = heapq.nlargest(8, candidates(), key=lambda row: row[0])
     best = None
-    for path in files:
+    for _, path in files:
         try:
             with path.open("rb") as file:
                 size = file.seek(0, 2)
@@ -353,10 +368,15 @@ def codex_local_record(now):
                     row = json.loads(line)
                 except ValueError:
                     continue
-                payload = row.get("payload", {})
+                if not isinstance(row, dict):
+                    continue
+                payload = row.get("payload")
+                if not isinstance(payload, dict):
+                    continue
                 observed = timestamp(row.get("timestamp"))
                 if (payload.get("type") == "token_count" and isinstance(payload.get("rate_limits"), dict)
-                        and observed is not None and now - MAX_AGE <= observed <= now):
+                        and observed is not None and now - MAX_AGE <= observed <= now
+                        and parse_codex(payload["rate_limits"], False)):
                     if best is None or observed > best[0]:
                         best = (observed, payload["rate_limits"])
                     break

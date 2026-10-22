@@ -56,6 +56,29 @@ function displayWindows(provider) {
     }).slice(0, 2);
 }
 
+function providerSummary(provider, nowMs, maxAge) {
+    var window = headline(provider, nowMs, maxAge);
+    return provider.label + ": " + (window
+        ? window.label + " " + valueFor(provider, window, nowMs, maxAge)
+        : provider.message || "Dados indisponíveis");
+}
+
+function providerTooltip(provider, windows, nowMs, maxAge) {
+    function describe(window) {
+        return window.label + ": " + valueFor(provider, window, nowMs, maxAge)
+            + " disponível · " + countdown(window.resets_at, nowMs);
+    }
+    var stale = provider.state === "stale"
+        || (provider.fetched_at && !validProvider(provider, nowMs, maxAge));
+    var lines = [provider.label + (stale ? " · Dados antigos" : "")];
+    for (var i = 0; i < windows.length; i++) lines.push(describe(windows[i]));
+    var critical = headline(provider, nowMs, maxAge);
+    if (critical && !windows.some(function (window) { return window.key === critical.key; }))
+        lines.push("Mais restritiva: " + describe(critical));
+    if (provider.message) lines.push(provider.message);
+    return lines.join("\n");
+}
+
 function shortCountdown(epoch, nowMs) {
     if (!epoch || epoch * 1000 <= nowMs) return "—";
     var seconds = epoch - nowMs / 1000;

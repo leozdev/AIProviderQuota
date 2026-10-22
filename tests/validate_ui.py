@@ -169,7 +169,28 @@ def validate():
         QTest.qWait(100)
         result['checks']['zero_quota_is_empty_bar'] = (
             find_item(root, 'bar_claude_five_hour').property('value') == 0
-            and find_item(root, 'quota_claude_five_hour').property('text') == '0%')
+            and find_item(root, 'quota_claude_five_hour').property('text') == '0%'
+            and find_item(root, 'bar_claude_five_hour_track').opacity() == 1)
+        extra = json.loads(json.dumps(data))
+        extra['providers'][1]['windows'].append({'key': 'seven_day_sonnet', 'label': 'Sonnet · semana',
+                                                'remaining_percent': 3, 'resets_at': data['generated_at'] + 86400})
+        root.setProperty('report', engine.toScriptValue(extra))
+        QTest.qWait(100)
+        engine.globalObject().setProperty('sample', engine.toScriptValue(extra['providers'][1]))
+        tooltip = engine.evaluate(f'providerTooltip(sample, displayWindows(sample), {data["generated_at"] * 1000}, 600)').toString()
+        result['checks']['two_bars_preserved_and_hidden_critical_window_explained'] = (
+            find_item(root, 'bar_claude_seven_day_sonnet') is None
+            and find_item(root, 'bar_claude_five_hour') is not None
+            and find_item(root, 'bar_claude_seven_day') is not None
+            and 'Mais restritiva: Sonnet · semana: 3%' in tooltip)
+        usd = json.loads(json.dumps(data))
+        usd['providers'][2]['windows'] = [{'key': 'purchased', 'label': 'Créditos extras',
+                                          'remaining_percent': None, 'remaining_usd': 25, 'resets_at': None}]
+        root.setProperty('report', engine.toScriptValue(usd))
+        QTest.qWait(100)
+        result['checks']['usd_without_percentage_has_value_and_no_empty_rail'] = (
+            find_item(root, 'bar_ollama_purchased_track').opacity() == 0
+            and find_item(root, 'quota_ollama_purchased').property('text') == 'US$ 25,00')
         expired = json.loads(json.dumps(data))
         for p in expired['providers']:
             if p['id'] == 'claude':
@@ -205,6 +226,12 @@ def validate():
         QTest.keyClick(panel, Qt.Key_Space)
         QTest.qWait(100)
         result['checks']['panel_keyboard'] = counter.property('count').toInt() == 2
+        result['checks']['panel_uses_distinct_provider_logos'] = all(
+            ready_icon.call([engine.newQObject(find_item(panel_root, 'panel_icon_' + p['id']))]).toBool()
+            for p in data['providers'])
+        description = panel_root.property('quotaDescription')
+        result['checks']['panel_accessibility_contains_provider_names_and_quotas'] = all(
+            label in description for label in ['Codex: Semana 72%', 'Claude: 5h 61%', 'Ollama Cloud: Semana 35,2%'])
         result['checks']['panel_screenshot_saved'] = panel.grabWindow().save(str(ROOT / 'evidence/panel-preview.png'))
         settings = QQuickView(engine, None)
         settings.setResizeMode(QQuickView.SizeRootObjectToView)
