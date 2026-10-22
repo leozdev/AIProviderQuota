@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "generated_at": 1800000000,
+  "max_age_sec": 600,
+  "providers": [
+    {
+      "id": "codex",
+      "label": "Codex",
+      "state": "ok",
+      "message": "",
+      "source": "Demonstração — dados fictícios",
+      "fetched_at": 1800000000,
+      "windows": [
+        {
+          "key": "7d",
+          "label": "Semana",
+          "remaining_percent": 72,
+          "resets_at": 1800518400
+        }
+      ]
+    },
+    {
+      "id": "claude",
+      "label": "Claude",
+      "state": "ok",
+      "message": "",
+      "source": "Demonstração — dados fictícios",
+      "fetched_at": 1800000000,
+      "windows": [
+        {
+          "key": "five_hour",
+          "label": "5h",
+          "remaining_percent": 61,
+          "resets_at": 1800007200
+        },
+        {
+          "key": "seven_day",
+          "label": "Semana",
+          "remaining_percent": 82,
+          "resets_at": 1800345600
+        }
+      ]
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama Cloud",
+      "state": "ok",
+      "message": "",
+      "source": "Demonstração — dados fictícios",
+      "fetched_at": 1800000000,
+      "windows": [
+        {
+          "key": "session",
+          "label": "5h",
+          "remaining_percent": 64.5,
+          "resets_at": 1800007200
+        },
+        {
+          "key": "weekly",
+          "label": "Semana",
+          "remaining_percent": 35.2,
+          "resets_at": 1800259200
+        }
+      ]
+    }
+  ]
+}

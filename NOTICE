@@ -1,0 +1,6 @@
+Cotas de IA derives its QML executable-engine integration and Codex JSON-RPC/normalization routines from PlasmaWidgetAiUsage by Marc Cheng (MIT).
+Upstream: https://github.com/WariKoda/PlasmaWidgetAiUsage
+Reviewed revision: 1b8fef4f2ca78482d8ca289a4204f02e5c51e111
+Adaptations: remaining-quota display, fixed three-provider scope, bounded collection, KWallet-backed Ollama credentials, Portuguese UI and validation.
+
+Provider logo provenance and attribution: package/contents/icons/ATTRIBUTION.md (contents/icons/ATTRIBUTION.md inside the installed package).

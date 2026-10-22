@@ -1,0 +1,15 @@
+# Local validation, generated packages and Python files
+/evidence/
+/dist/
+/work/
+__pycache__/
+*.py[cod]
+*.plasmoid
+*.log
+.venv/
+
+# Local credentials/configuration never belong in the repository
+.env
+.env.*
+auth.json
+.credentials.json
