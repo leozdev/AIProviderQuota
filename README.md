@@ -1,35 +1,37 @@
 # AIProviderQuota
 
-Widget para **KDE Plasma 6** que reúne as cotas disponíveis do **Codex**, **Claude** e **Ollama Cloud** em um cartão compacto.
+**English** | [Português](README.pt-BR.md)
 
-![Temas claro e escuro](docs/images/themes.png)
+A compact **KDE Plasma 6** widget that brings together the available quotas for **Codex**, **Claude**, and **Ollama Cloud**.
 
-*Prévia com dados fictícios. O quadriculado evidencia a transparência do fundo.*
+![Light and dark themes](docs/images/themes.png)
 
-## Recursos
+*Preview with sample data. The checkerboard shows the background transparency.*
 
-- Lista vertical com ícones dos provedores, barras de quota disponível e tempo até a renovação.
-- Até duas janelas por provedor: `7d` e `5h`, quando disponíveis. A sessão do Ollama aparece como `5h`.
-- Reset em uma única unidade: `1w`, `4d`, `2h` ou `30m`.
-- Temas Automático, Claro e Escuro; opacidade do fundo ajustável de 0 a 100%.
-- Cartão de 300 × 180 px, com barras de 4 px e detalhes ao clicar em cada provedor.
-- Atualização automática a cada dois minutos, configurável entre 1 e 15 minutos.
-- Representação compacta para o painel, com ícones distintos e nomes/valores acessíveis ao leitor de tela.
+## Features
 
-O widget acompanha as **assinaturas e ferramentas** dos provedores. Cada barra representa a porcentagem **restante** da janela informada pela conta. O Ollama também aceita contas com franquia mensal em dólares, mantendo os créditos extras separados.
-Quando a conta informa apenas um saldo em dólares, o valor aparece sem barra de percentual.
+- A vertical list with provider icons, remaining-quota bars, and time until reset.
+- Up to two windows per provider: `7d` and `5h`, when available. Ollama's session is labeled `5h`.
+- Reset countdowns use a single unit: `1w`, `4d`, `2h`, or `30m`.
+- Automatic, light, and dark themes, with background opacity adjustable from 0 to 100%.
+- A 300 × 180 px card with 4 px progress bars and expandable provider details.
+- Automatic refresh every two minutes, configurable from 1 to 15 minutes.
+- A compact panel view with distinct icons and screen-reader-accessible provider names and values.
 
-## Requisitos
+The widget tracks **provider subscriptions and tools**. Each bar shows the **remaining** percentage of the quota window reported by the account. Ollama accounts with a monthly dollar allowance are also supported, with purchased credits shown separately.
+When an account only reports a dollar balance, the value is displayed without a percentage bar.
 
-- Linux com KDE Plasma 6 e Qt 6. Validado em CachyOS, Plasma 6.8 e Wayland.
-- Python 3, `kpackagetool6` e `qdbus6`.
-- Codex CLI e Claude Code já autenticados, para acompanhar esses provedores.
-- KWallet, `kwallet-query` e uma chave de API do Ollama Cloud, para acompanhar o Ollama.
-- `kdialog` para configurar a chave pela interface; módulo Python `dbus` para criar inicialmente a pasta no KWallet.
+## Requirements
 
-No CachyOS/Arch, `kpackagetool6`, `qdbus6`, `kwallet-query` e `kdialog` são fornecidos, respectivamente, pelos pacotes `kpackage`, `qt6-tools`, `kwallet` e `kdialog`. O módulo `dbus` vem de `python-dbus`.
+- Linux with KDE Plasma 6 and Qt 6. Validated on CachyOS, Plasma 6.8, and Wayland.
+- Python 3, `kpackagetool6`, and `qdbus6`.
+- Codex CLI and Claude Code already signed in, to track those providers.
+- KWallet, `kwallet-query`, and an Ollama Cloud API key, to track Ollama.
+- `kdialog` to configure the key through the UI; the Python `dbus` module to create the KWallet folder initially.
 
-## Instalação
+On CachyOS/Arch, `kpackagetool6`, `qdbus6`, `kwallet-query`, and `kdialog` are provided by the `kpackage`, `qt6-tools`, `kwallet`, and `kdialog` packages, respectively. The `dbus` module comes from `python-dbus`.
+
+## Installation
 
 ```bash
 git clone https://github.com/leozdev/AIProviderQuota.git
@@ -37,114 +39,114 @@ cd AIProviderQuota
 bash install.sh
 ```
 
-Depois, abra **Adicionar widgets** no Plasma, procure **Cotas de IA** e coloque o widget na área de trabalho ou no painel.
+Open Plasma's widget picker, search for **Cotas de IA** (the widget's current display name), and add it to your desktop or panel.
 
-O instalador usa o pacote em `package/` e instala somente para o usuário atual, sem `sudo`. Se o widget já estiver instalado, ele será atualizado. Os pacotes do sistema não são instalados nem atualizados pelo script.
+The installer uses the package in `package/` and installs it for the current user only, without `sudo`. An existing installation is upgraded. The script does not install or update system packages.
 
-### Atualização
+### Updating
 
 ```bash
 git pull --ff-only
 bash install.sh
 ```
 
-Se a instância já estiver carregada, remova e adicione novamente o widget para carregar o QML atualizado. O script não reinicia o Plasma.
+If the widget is already loaded, Plasma may keep the previous QML in memory. Reload `plasmashell`, or sign out and back in, to load the updated interface. The installer does not restart Plasma automatically.
 
-## Contas e fontes de quota
+## Accounts and quota sources
 
-| Provedor | Autenticação e fonte |
+| Provider | Authentication and source |
 | --- | --- |
-| Codex | Reutiliza o login do cliente local e consulta `account/rateLimits/read` pelo `codex app-server`. Pode recorrer a um registro de sessão recente, identificado como tal. |
-| Claude | Reutiliza o OAuth do Claude Code e consulta `https://api.anthropic.com/api/oauth/usage`. **Esse endpoint é interno e pode mudar.** A renovação do login continua sob responsabilidade do Claude Code. |
-| Ollama Cloud | Consulta `https://ollama.com/api/balance` com uma chave guardada no KWallet. |
+| Codex | Reuses the local client's login and queries `account/rateLimits/read` through `codex app-server`. May fall back to a recent session log, identified as such. |
+| Claude | Reuses Claude Code's OAuth credentials and queries `https://api.anthropic.com/api/oauth/usage`. **This is an internal endpoint and may change.** Claude Code remains responsible for renewing the login. |
+| Ollama Cloud | Queries `https://ollama.com/api/balance` with a key stored in KWallet. |
 
-Para configurar o Ollama, abra **Configurar Cotas de IA → Geral → Configurar chave do Ollama**. A entrada é feita em um diálogo de senha do KDE.
+To configure Ollama, right-click the widget, open its settings, and use the Ollama key configuration button on the general settings page. Enter the key in the KDE password dialog.
 
-A chave fica na pasta `AI Quotas`, entrada `ollama-cloud-api-key`, da carteira de rede padrão. Também é possível configurá-la pelo terminal, com entrada interativa:
+The key is stored in the default network wallet, under the `AI Quotas` folder and the `ollama-cloud-api-key` entry. You can also configure it from the terminal using interactive input:
 
 ```bash
 python3 package/contents/code/quota_collector.py --configure-ollama
 
-# Para substituir uma chave existente:
+# To replace an existing key:
 python3 package/contents/code/quota_collector.py --configure-ollama --replace
 ```
 
-Com a carteira bloqueada, o widget informa que ela precisa ser desbloqueada. A atualização automática não tenta abrir repetidamente um diálogo de senha.
+If the wallet is locked, the widget reports that it needs to be unlocked. Automatic refresh does not repeatedly open a password prompt.
 
-## Aparência e uso
+## Appearance and usage
 
-Nas configurações, selecione os provedores, o intervalo de atualização, o tema e a opacidade do fundo. O padrão acompanha as cores do Plasma e usa **82% de opacidade**. A transparência afeta o fundo; textos e ícones mantêm sua nitidez. A representação no painel segue as cores do próprio painel.
+Use the settings to choose providers, refresh interval, theme, and background opacity. By default, the widget follows Plasma's colors and uses **82% opacity**. Transparency affects the background; text and icons remain crisp. The compact panel view follows the panel's own colors.
 
-- Passe o mouse para identificar o provedor e consultar o resumo das janelas.
-- Clique na linha para expandir valores, renovação completa e horário da coleta.
-- Use o botão de atualizar para solicitar uma nova consulta.
-- No painel, o indicador mostra a janela com menor percentual disponível de cada provedor.
-- Se essa janela não estiver entre as duas barras, a dica identifica a quota mais restritiva. Os detalhes mostram todas as janelas retornadas.
+- Hover over a provider to see its name and a summary of its quota windows.
+- Click a provider row to expand values, full reset details, and collection time.
+- Use the refresh button to request a new query.
+- In the panel, each provider's indicator shows the window with the lowest remaining percentage.
+- If that window is not among the two visible bars, the tooltip identifies the most restrictive quota. Expanded details show every returned window.
 
-Alterações na seleção de provedores durante uma consulta entram na coleta seguinte, iniciada assim que a consulta atual termina.
+If you change the selected providers during a query, the new selection is collected as soon as the current query finishes.
 
-## Falhas e privacidade
+## Failures and privacy
 
-A coleta consulta as quotas sem enviar prompts aos modelos. Cada provedor possui estado próprio; respostas HTTP 429 respeitam o tempo de espera indicado pelo provedor. A coleta tem um prazo total de 20 segundos, preservando os resultados concluídos se outro provedor demorar demais. Instâncias simultâneas aguardam a coleta em andamento e reutilizam seu cache recente dentro desse mesmo prazo.
+Quota collection does not send prompts to models. Each provider has its own state; HTTP 429 responses respect the wait time specified by the provider. Collection has a total deadline of 20 seconds, preserving completed results if another provider takes too long. Concurrent instances wait for the active collection and reuse its recent cache within the same deadline.
 
-Em uma falha temporária, o último valor válido pode aparecer por até dez minutos, marcado como antigo e mantendo o horário original. Quando uma janela atinge o reset, o percentual deixa de ser mostrado até uma nova resposta válida. Uma autenticação recusada pelo Claude ou Ollama invalida os valores em cache daquele provedor.
+During a temporary failure, the last valid value may remain visible for up to ten minutes, marked as stale and retaining its original timestamp. Once a quota window reaches its reset time, its percentage is hidden until a new valid response arrives. Rejected authentication from Claude or Ollama invalidates that provider's cached values.
 
-No Codex, erros do RPC não distinguem uma recusa de autenticação de outras falhas: o coletor pode usar um registro local recente, identificado como tal, ou o cache marcado como antigo. Esses dados também expiram em dez minutos e não confirmam que o login continua ativo.
+For Codex, RPC errors do not distinguish authentication rejection from other failures: the collector may use a recent local session log, identified as such, or a cache marked as stale. These values also expire after ten minutes and do not confirm that the login is still active.
 
-O cache fica em `~/.cache/ai-quotas/` e contém quotas e horários. Tokens e a chave do Ollama não são incluídos nesses relatórios. As credenciais do Codex e Claude permanecem sob controle dos respectivos clientes; a chave do Ollama é lida do KWallet.
+The cache is stored in `~/.cache/ai-quotas/` and contains quotas and timestamps. Tokens and the Ollama key are not included in these reports. Codex and Claude credentials remain under their respective clients' control; the Ollama key is read from KWallet.
 
-## Desenvolvimento e validação
+## Development and validation
 
-O coletor Python usa a biblioteca padrão na coleta normal e entrega JSON normalizado ao QML. A interface fica em `package/contents/ui/` e o coletor em `package/contents/code/quota_collector.py`. A versão enviada às fontes vem de `package/metadata.json`.
+The Python collector uses the standard library for normal collection and returns normalized JSON to QML. The UI lives in `package/contents/ui/`, and the collector is in `package/contents/code/quota_collector.py`. The version sent to quota sources comes from `package/metadata.json`.
 
-Os testes unitários usam respostas simuladas e não precisam de contas:
+Unit tests use simulated responses and do not require accounts:
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-Para verificar o QML, use o `qmllint` da instalação Qt 6:
+To check QML, use `qmllint` from your Qt 6 installation:
 
 ```bash
 /usr/lib/qt6/bin/qmllint package/contents/ui/*.qml \
   package/contents/ui/config/*.qml package/contents/config/config.qml
 ```
 
-Os testes gráficos opcionais exigem KWin, PySide6, Pillow, Spectacle e `dbus-run-session`, além do Plasma. Eles criam uma sessão Wayland isolada, sem substituir o compositor do usuário:
+Optional graphical tests require KWin, PySide6, Pillow, Spectacle, and `dbus-run-session`, as well as Plasma. They create an isolated Wayland session without replacing your compositor:
 
 ```bash
-# Renderização com dados fictícios, sem consultar as contas:
+# Render with sample data, without querying accounts:
 python3 tests/run_wayland_validation.py
 
-# Integração nativa e mudanças durante uma consulta, com dados fictícios:
+# Native integration and changes during a query, with sample data:
 python3 tests/run_wayland_validation.py --plasma-fixture
 
-# Integração nativa: consulta as contas locais e acessa o KWallet:
+# Native integration: queries local accounts and accesses KWallet:
 python3 tests/run_wayland_validation.py --plasma
 ```
 
-Os resultados são gravados em `evidence/`, ignorado pelo Git. O teste visual usa a fixture pública `tests/fixtures/quota-demo.json`; a disponibilidade dos serviços é registrada separadamente dos checks da interface no teste nativo.
+Results are written to `evidence/`, which is ignored by Git. The visual test uses the public `tests/fixtures/quota-demo.json` fixture; service availability is recorded separately from UI checks in the native test.
 
-## Remoção
+## Uninstalling
 
 ```bash
 bash uninstall.sh
 ```
 
-O script remove as instâncias de **Cotas de IA** e o pacote instalado. Se não conseguir acessar a sessão do Plasma, avisa e continua removendo o pacote. A chave do Ollama é preservada no KWallet. Para apagá-la, remova a entrada indicada acima pelo gerenciador de carteiras. O cache pode ser removido separadamente em `~/.cache/ai-quotas/`.
+The script removes instances of the widget and its installed package. If it cannot access the Plasma session, it reports this and continues removing the package. The Ollama key is preserved in KWallet. To delete it, use the wallet manager to remove the entry described above. The cache can be removed separately from `~/.cache/ai-quotas/`.
 
-## Limitações
+## Limitations
 
-- A disponibilidade das janelas depende da conta e da resposta do provedor.
-- O endpoint do Claude é interno; alterações no serviço podem exigir ajustes na integração.
-- Antigravity/Gemini ficou para uma etapa futura.
+- Available quota windows depend on the account and the provider's response.
+- Claude's endpoint is internal; service changes may require integration updates.
+- Antigravity/Gemini support is planned for a future stage.
 
-## Autoria, licença e créditos
+## Authorship, license, and credits
 
-**AIProviderQuota é desenvolvido e mantido por [Leo Zamparo (leozdev)](https://github.com/leozdev).**
+**AIProviderQuota is developed and maintained by [Leo Zamparo (leozdev)](https://github.com/leozdev).**
 
-O copyright de 2026 de Leo Zamparo cobre as adições e adaptações do AIProviderQuota. O aviso original de copyright de Marc Cheng e o texto da licença MIT do código reutilizado são preservados em `LICENSE` e `package/LICENSE`.
+Leo Zamparo's 2026 copyright covers AIProviderQuota's additions and adaptations. Marc Cheng's original copyright notice and the MIT license text for the reused code are preserved in `LICENSE` and `package/LICENSE`.
 
-Código sob [licença MIT](LICENSE). A integração QML/Python e partes do protocolo Codex foram adaptadas de [PlasmaWidgetAiUsage](https://github.com/WariKoda/PlasmaWidgetAiUsage), de Marc Cheng, revisão `1b8fef4f2ca78482d8ca289a4204f02e5c51e111`. Marc é creditado como autor dessa base reutilizada. Os detalhes de procedência estão em [NOTICE](NOTICE).
+Code is released under the [MIT license](LICENSE). The QML/Python integration and parts of the Codex protocol were adapted from [PlasmaWidgetAiUsage](https://github.com/WariKoda/PlasmaWidgetAiUsage) by Marc Cheng, revision `1b8fef4f2ca78482d8ca289a4204f02e5c51e111`. Marc is credited as the author of that reused code. See [NOTICE](NOTICE) for provenance details.
 
-A procedência dos ícones está documentada em [ATTRIBUTION.md](package/contents/icons/ATTRIBUTION.md). As marcas pertencem aos respectivos provedores.
+Icon provenance is documented in [ATTRIBUTION.md](package/contents/icons/ATTRIBUTION.md). Trademarks belong to their respective providers.
