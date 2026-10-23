@@ -6,7 +6,8 @@ import org.kde.plasma.components as PC
 import org.kde.kirigami as Kirigami
 import "lib.js" as Lib
 
-PC.Page {
+// Page/ScrollView absorb every mouse button; let Plasma receive right presses.
+PC.Control {
     id: full
     property var report: null
     property bool loading: false
@@ -90,14 +91,25 @@ PC.Page {
             }
         }
 
-        PC.ScrollView {
+        Flickable {
             id: scroll
+            objectName: "providerScroll"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: availableWidth
-            PC.ScrollBar.horizontal.policy: PC.ScrollBar.AlwaysOff
+            contentWidth: width
+            contentHeight: providerList.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+            PC.ScrollBar.vertical: PC.ScrollBar {
+                id: verticalScrollBar
+                objectName: "providerScrollBar"
+            }
+            Kirigami.WheelHandler {
+                target: scroll
+            }
             ColumnLayout {
-                width: scroll.availableWidth
+                id: providerList
+                width: scroll.width - (verticalScrollBar.visible ? verticalScrollBar.width : 0)
                 spacing: 4
                 Repeater {
                     model: full.report ? full.report.providers : []

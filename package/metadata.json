@@ -6,7 +6,7 @@
     "Description": "Quotas disponíveis do Codex, Claude e Ollama Cloud",
     "Icon": "view-statistics",
     "Category": "System Information",
-    "Version": "1.2.3",
+    "Version": "1.2.4",
     "License": "MIT",
     "Authors": [
       {

@@ -3,9 +3,9 @@ import sys
 import time
 from pathlib import Path
 from PySide6.QtCore import QObject, QPoint, QPointF, QTimer, Qt, QUrl, Slot
-from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QWheelEvent
 from PySide6.QtQml import QQmlEngine
-from PySide6.QtQuick import QQuickView, QQuickWindow
+from PySide6.QtQuick import QQuickItem, QQuickView, QQuickWindow
 from PySide6.QtTest import QTest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,24 @@ if view.status() == QQuickView.Error:
     print(json.dumps({'errors': [e.toString() for e in view.errors()]}))
     sys.exit(1)
 root = view.rootObject()
+
+class ContextMenuHost(QQuickItem):
+    """Model the containment receiving presses unhandled by the widget."""
+    def __init__(self, window, item):
+        super().__init__(window.contentItem())
+        self.right_presses = 0
+        self.setAcceptedMouseButtons(Qt.RightButton)
+        self.setWidth(window.width())
+        self.setHeight(window.height())
+        window.widthChanged.connect(self.setWidth)
+        window.heightChanged.connect(self.setHeight)
+        item.setParentItem(self)
+
+    def mousePressEvent(self, event):
+        self.right_presses += 1
+        event.accept()
+
+context_host = ContextMenuHost(view, root)
 data = json.loads((ROOT / 'tests/fixtures/quota-demo.json').read_text())
 root.setProperty('report', engine.toScriptValue(data))
 root.setProperty('nowMs', data['generated_at'] * 1000)
@@ -63,11 +81,45 @@ def validate():
         root.refreshRequested.connect(lambda: count.append(True))
         view.grabWindow().save(str(ROOT / 'evidence/widget-preview.png'))
         refresh = find_item(root, 'refreshButton')
+        right_click_targets = {'background': QPointF(5, 5), 'header': QPointF(40, 20),
+                               'refresh': center(refresh)}
+        for provider_id in ['codex', 'claude', 'ollama']:
+            for prefix in ['provider_', 'icon_']:
+                right_click_targets[prefix + provider_id] = center(find_item(root, prefix + provider_id))
+        for name in ['bar_claude_seven_day', 'reset_claude_five_hour']:
+            right_click_targets[name] = center(find_item(root, name))
+        for name, point in right_click_targets.items():
+            before = context_host.right_presses
+            QTest.mouseClick(view, Qt.RightButton, Qt.NoModifier, point.toPoint())
+            result['checks']['right_click_reaches_containment_' + name] = context_host.right_presses == before + 1
+        result['checks']['right_click_does_not_refresh_or_expand'] = not count and root.property('expandedId') == ''
         click(refresh)
         result['checks']['refresh_button'] = len(count) == 1
         provider = find_item(root, 'provider_codex')
         click(provider)
         result['checks']['provider_detail_expands'] = root.property('expandedId') == 'codex'
+        scroll = find_item(root, 'providerScroll')
+        scrollbar = find_item(root, 'providerScrollBar')
+        before = context_host.right_presses
+        QTest.mouseClick(view, Qt.RightButton, Qt.NoModifier, QPoint(70, 110))
+        result['checks']['right_click_on_expanded_details_reaches_containment'] = context_host.right_presses == before + 1
+        # Force overflow to exercise the scrollbar and wheel independently of
+        # provider text metrics and the desktop's minimum-size constraints.
+        view.resize(300, 140)
+        QTest.qWait(150)
+        before = context_host.right_presses
+        QTest.mouseClick(view, Qt.RightButton, Qt.NoModifier, center(scrollbar).toPoint())
+        result['checks']['right_click_on_scrollbar_reaches_containment'] = (
+            scrollbar.isVisible() and context_host.right_presses == before + 1)
+        wheel_point = center(scroll)
+        wheel = QWheelEvent(wheel_point, view.mapToGlobal(wheel_point.toPoint()), QPoint(), QPoint(0, -120),
+                            Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+        QGuiApplication.sendEvent(view, wheel)
+        QTest.qWait(200)
+        result['checks']['overflow_still_scrolls_with_wheel'] = scroll.property('contentY') > 0
+        scroll.setProperty('contentY', 0)
+        view.resize(300, 180)
+        QTest.qWait(100)
         click(provider)
         result['checks']['provider_detail_closes'] = root.property('expandedId') == ''
         QTest.mouseMove(view, QPoint(8, 8))
@@ -214,12 +266,16 @@ def validate():
         panel.resize(230, 30)
         panel.setSource(QUrl.fromLocalFile(str(ROOT / 'package/contents/ui/CompactRepresentation.qml')))
         panel_root = panel.rootObject()
+        panel_context_host = ContextMenuHost(panel, panel_root)
         panel_root.setProperty('report', engine.toScriptValue(data))
         panel_root.setProperty('nowMs', data['generated_at'] * 1000)
         panel.show()
         QTest.qWait(200)
         hook = engine.evaluate('(function(item) { var r = {count: 0}; item.clicked.connect(function(){r.count++;}); return r; })')
         counter = hook.call([engine.newQObject(panel_root)])
+        QTest.mouseClick(panel, Qt.RightButton, Qt.NoModifier, QPoint(100, 15))
+        result['checks']['panel_right_click_reaches_containment'] = panel_context_host.right_presses == 1
+        result['checks']['panel_right_click_does_not_toggle_popup'] = counter.property('count').toInt() == 0
         QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, QPoint(100, 15))
         QTest.qWait(100)
         result['checks']['panel_click'] = counter.property('count').toInt() == 1
