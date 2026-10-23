@@ -19,7 +19,7 @@ MouseArea {
     activeFocusOnTab: true
     onPressed: compact.forceActiveFocus()
     Accessible.role: Accessible.Button
-    Accessible.name: i18n("Abrir cotas de IA") + (quotaDescription ? "\n" + quotaDescription : "")
+    Accessible.name: i18n("Open AI Quotes") + (quotaDescription ? "\n" + quotaDescription : "")
     Keys.onReturnPressed: compact.clicked(null)
     Keys.onEnterPressed: compact.clicked(null)
     Keys.onSpacePressed: compact.clicked(null)
@@ -52,7 +52,7 @@ MouseArea {
         }
         PC.Label {
             visible: !compact.report
-            text: i18n("Cotas de IA")
+            text: i18n("AI Quotes")
         }
     }
 }

@@ -27,7 +27,7 @@ class UninstallContracts(unittest.TestCase):
     def test_package_removal_survives_missing_plasma_session(self):
         result, args = self.run_removal(1)
         self.assertEqual(result.returncode, 0)
-        self.assertIn('Aviso:', result.stderr)
+        self.assertIn('Warning:', result.stderr)
         self.assertEqual(args, ['--type', 'Plasma/Applet', '--remove', 'org.leoz.aiquotas'])
 
     def test_normal_removal_has_no_warning(self):
@@ -38,4 +38,4 @@ class UninstallContracts(unittest.TestCase):
     def test_package_failure_is_propagated(self):
         result, _ = self.run_removal(1, 7)
         self.assertEqual(result.returncode, 7)
-        self.assertNotIn('Widget removido.', result.stdout)
+        self.assertNotIn('Widget removed.', result.stdout)

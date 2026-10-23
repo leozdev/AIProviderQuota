@@ -244,7 +244,7 @@ sys.stdin.read()
                 rows = collector.collect(force=True)['providers']
             self.assertLess(time.monotonic() - started, 1.5)
             self.assertEqual([row['state'] for row in rows], ['ok', 'auth', 'stale'])
-            self.assertIn('excedeu', rows[2]['message'])
+            self.assertIn('exceeded', rows[2]['message'])
             self.assertEqual(rows[2]['fetched_at'], self.now - 30)
             self.assertEqual(rows[2]['windows'][0]['remaining_percent'], 42)
             child_pid = int(marker.read_text())
@@ -333,7 +333,7 @@ sys.stdin.read()
                 value = collector.collect(['codex'])['providers'][0]
             self.assertEqual(start.call_count, 1)
             self.assertEqual(value['state'], 'unavailable')
-            self.assertIn('iniciar', value['message'])
+            self.assertIn('start', value['message'])
 
     def test_second_instance_waits_and_reuses_first_instances_fresh_cache(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(collector, 'CACHE', Path(directory)):
@@ -370,7 +370,7 @@ with (root/'collection.lock').open('w') as lock:
                     value = collector.collect(['codex'])['providers'][0]
                 self.assertLess(time.monotonic() - started, 1)
                 self.assertEqual(value['state'], 'unavailable')
-                self.assertIn('em andamento', value['message'])
+                self.assertIn('in progress', value['message'])
             finally:
                 os.close(lock)
 

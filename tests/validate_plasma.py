@@ -72,6 +72,21 @@ with log_path.open('w') as log:
             time.sleep(.3)
             result['checks']['no_duplicate_initial_or_configuration_queries'] = len(wait_records('requests', 3)) == 3
             result['fixtureRequests'] = wait_records('requests', 3)
+            script(config + 'w.writeConfig("title","My AI tools");w.writeConfig("titleAlignment",2);')
+            saved = json.loads(script(config + 'print(JSON.stringify({title:w.readConfig("title"),alignment:w.readConfig("titleAlignment")}));'))
+            result['checks']['native_title_and_alignment_config_roundtrip'] = saved['title'] == 'My AI tools' and str(saved['alignment']) == '2'
+            script(config + 'w.writeConfig("bodyFontSize",10);')
+            result['checks']['native_font_size_config_roundtrip'] = int(script(config + 'print(w.readConfig("bodyFontSize"));')) == 10
+            script(config + 'w.writeConfig("bodyFontSize",8);')
+            script(config + 'w.writeConfig("title","");w.writeConfig("titleAlignment",0);')
+            visibility_keys = ['showProviderIcon', 'showQuotaPeriod', 'showProgressBar', 'showQuotaValue', 'showResetTime']
+            script(config + ''.join('w.writeConfig("' + key + '",false);' for key in visibility_keys))
+            saved = json.loads(script(config + 'print(JSON.stringify([' + ','.join('w.readConfig("' + key + '")' for key in visibility_keys) + ']));'))
+            result['nativeCardElements'] = dict(zip(visibility_keys, saved))
+            # Plasma's scripting API can serialize readConfig booleans as text.
+            result['checks']['native_card_elements_config_roundtrip'] = len(saved) == 5 and all(value is False or value == 'false' for value in saved)
+            script(config + ''.join('w.writeConfig("' + key + '",true);' for key in visibility_keys))
+            result['checks']['appearance_changes_do_not_query_providers'] = len(wait_records('requests', 3)) == 3
         cache = Path(os.environ['XDG_CACHE_HOME']) / 'ai-quotas'
         deadline = time.monotonic() + 20
         snapshots = {}
@@ -97,7 +112,12 @@ with log_path.open('w') as log:
             (ROOT / 'evidence/plasma-live-sources.json').write_text(json.dumps(snapshots, ensure_ascii=False, indent=2) + '\n')
         geometry = json.loads(script('var g=desktopById(%d).widgetById(%d).geometry;print(JSON.stringify({x:g.x,y:g.y,width:g.width,height:g.height}));' % (desktop, widget_id)))
         result['geometry'] = geometry
-        result['checks']['full_representation_has_usable_size'] = geometry['width'] >= 280 and geometry['height'] >= 180
+        if fixture:
+            metrics = [json.loads(line.split('AIQ_TEST_METRICS ', 1)[1]) for line in log_path.read_text().splitlines() if 'AIQ_TEST_METRICS ' in line]
+            result['nativeLayout'] = metrics[-1] if metrics else {}
+            result['checks']['full_representation_has_usable_size'] = bool(metrics) and metrics[-1]['width'] >= metrics[-1]['minimumWidth'] and metrics[-1]['height'] >= metrics[-1]['minimumHeight']
+        else:
+            result['checks']['full_representation_has_usable_size'] = geometry['width'] > 0 and geometry['height'] > 0
         image_path = Path(os.environ['XDG_CACHE_HOME']) / 'desktop.png'
         bus('org.kde.KWin', '/KWin', 'org.kde.KWin.showDesktop', 'true')
         time.sleep(0.3)

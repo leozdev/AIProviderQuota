@@ -13,10 +13,10 @@ for (var i = 0; i < containers.length; i++) {
         if (items[j].type === "org.leoz.aiquotas") items[j].remove();
     }
 }'; then
-        echo 'Aviso: não foi possível remover as instâncias pelo Plasma; o pacote será removido mesmo assim.' >&2
+        echo 'Warning: could not remove widget instances through Plasma; the package will still be removed.' >&2
     fi
 else
-    echo 'Aviso: qdbus não encontrado; o pacote será removido sem acessar a sessão do Plasma.' >&2
+    echo 'Warning: qdbus was not found; the package will be removed without accessing the Plasma session.' >&2
 fi
 kpackagetool6 --type Plasma/Applet --remove org.leoz.aiquotas
-echo 'Widget removido. A chave do Ollama foi preservada no KWallet (pasta AI Quotas).'
+echo 'Widget removed. The Ollama key was preserved in KWallet (AI Quotas folder).'

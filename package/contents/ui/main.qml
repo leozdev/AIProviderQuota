@@ -25,10 +25,10 @@ PlasmoidItem {
         return p.length > 0;
     }).join(",")
 
-    toolTipMainText: i18n("Cotas de IA · disponível")
+    toolTipMainText: i18n("AI Quotes · available")
     toolTipSubText: {
         if (!root.report)
-            return root.loading ? i18n("Consultando…") : i18n("Aguardando consulta");
+            return root.loading ? i18n("Querying…") : i18n("Waiting for a query");
         return root.report.providers.map(function (p) {
             return Lib.providerSummary(p, root.nowMs, root.maxAge);
         }).join("\n");
@@ -75,7 +75,7 @@ PlasmoidItem {
                 root.report = parsed;
                 root.lastError = "";
             } catch (e) {
-                root.lastError = i18n("Não foi possível atualizar. Tente novamente.");
+                root.lastError = i18n("Could not refresh. Please try again.");
             }
             root.finishRefresh();
         }
@@ -98,7 +98,7 @@ PlasmoidItem {
         interval: 30000
         onTriggered: {
             executable.disconnectSource(root.currentSource);
-            root.lastError = i18n("A consulta demorou demais. Tente novamente.");
+            root.lastError = i18n("The query timed out. Please try again.");
             root.finishRefresh();
         }
     }
@@ -114,6 +114,14 @@ PlasmoidItem {
         onClicked: root.expanded = !root.expanded
     }
     fullRepresentation: FullRepresentation {
+        title: Plasmoid.configuration.title
+        titleAlignment: Plasmoid.configuration.titleAlignment
+        bodyFontSize: Plasmoid.configuration.bodyFontSize
+        showProviderIcon: Plasmoid.configuration.showProviderIcon
+        showQuotaPeriod: Plasmoid.configuration.showQuotaPeriod
+        showProgressBar: Plasmoid.configuration.showProgressBar
+        showQuotaValue: Plasmoid.configuration.showQuotaValue
+        showResetTime: Plasmoid.configuration.showResetTime
         themeMode: Plasmoid.configuration.themeMode
         backgroundOpacity: Plasmoid.configuration.backgroundOpacity
         report: root.report

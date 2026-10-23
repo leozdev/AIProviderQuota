@@ -7,6 +7,14 @@ function colorFor(id) {
     return "#6b8fd6";
 }
 
+function scaledFont(font, factor, weight) {
+    var properties = {family: font.family, weight: weight === undefined ? font.weight : weight, italic: font.italic,
+                      letterSpacing: font.letterSpacing, wordSpacing: font.wordSpacing};
+    if (font.pointSize > 0) properties.pointSize = font.pointSize * factor;
+    else properties.pixelSize = Math.max(1, Math.round(font.pixelSize * factor));
+    return Qt.font(properties);
+}
+
 function validProvider(provider, nowMs, maxAge) {
     if (!provider || !provider.fetched_at) return false;
     if (provider.state !== "ok" && provider.state !== "stale") return false;
@@ -26,14 +34,17 @@ function isStale(provider, nowMs, maxAge) {
 
 function percent(value) {
     if (typeof value !== "number" || !isFinite(value)) return "—";
-    return value.toLocaleString(Qt.locale("pt_BR"), "f", value % 1 === 0 ? 0 : 1) + "%";
+    return value.toLocaleString(Qt.locale(), "f", value % 1 === 0 ? 0 : 1) + "%";
+}
+
+function quotaValue(window) {
+    if (typeof window.remaining_usd === "number")
+        return "USD " + window.remaining_usd.toLocaleString(Qt.locale(), "f", 2);
+    return percent(window.remaining_percent);
 }
 
 function valueFor(provider, window, nowMs, maxAge) {
-    if (!liveWindow(provider, window, nowMs, maxAge)) return "—";
-    if (typeof window.remaining_usd === "number")
-        return "US$ " + window.remaining_usd.toLocaleString(Qt.locale("pt_BR"), "f", 2);
-    return percent(window.remaining_percent);
+    return liveWindow(provider, window, nowMs, maxAge) ? quotaValue(window) : "—";
 }
 
 function headline(provider, nowMs, maxAge) {
@@ -50,7 +61,6 @@ function headline(provider, nowMs, maxAge) {
 }
 
 function displayWindows(provider) {
-    // Keep the same order for every provider, without inventing absent windows.
     function rank(window) {
         if (["7d", "seven_day", "weekly"].indexOf(window.key) >= 0) return 0;
         if (["5h", "five_hour", "session"].indexOf(window.key) >= 0) return 1;
@@ -65,62 +75,99 @@ function providerSummary(provider, nowMs, maxAge) {
     var window = headline(provider, nowMs, maxAge);
     return provider.label + ": " + (window
         ? window.label + " " + valueFor(provider, window, nowMs, maxAge)
-        : provider.message || "Dados indisponíveis");
+        : provider.message || "Data unavailable");
 }
 
-function providerTooltip(provider, windows, nowMs, maxAge) {
-    function describe(window) {
-        return window.label + ": " + valueFor(provider, window, nowMs, maxAge)
-            + " disponível · " + countdown(window.resets_at, nowMs);
-    }
-    var lines = [provider.label + (isStale(provider, nowMs, maxAge) ? " · Dados antigos" : "")];
-    for (var i = 0; i < windows.length; i++) lines.push(describe(windows[i]));
+function providerTooltip(provider, nowMs, maxAge) {
     var critical = headline(provider, nowMs, maxAge);
-    if (critical && !windows.some(function (window) { return window.key === critical.key; }))
-        lines.push("Mais restritiva: " + describe(critical));
+    var lines = [provider.label + (isStale(provider, nowMs, maxAge) ? " · Stale data" : "")];
+    (provider.windows || []).forEach(function (window) {
+        lines.push(window.label + ": " + valueFor(provider, window, nowMs, maxAge)
+            + " available" + (critical && critical.key === window.key ? " · Most restrictive" : ""));
+        lines.push(countdown(window.resets_at, nowMs)
+            + (window.resets_at ? " · " + Qt.formatDateTime(new Date(window.resets_at * 1000), Qt.locale().dateTimeFormat()) : ""));
+    });
     if (provider.message) lines.push(provider.message);
+    if (provider.source) lines.push(provider.source);
+    lines.push(ageLabel(provider.fetched_at, nowMs));
     return lines.join("\n");
 }
 
-function shortCountdown(epoch, nowMs) {
-    if (!epoch || epoch * 1000 <= nowMs) return "—";
-    var seconds = epoch - nowMs / 1000;
+function shortDuration(seconds) {
     if (seconds >= 604800) return Math.floor(seconds / 604800) + "w";
     if (seconds >= 86400) return Math.floor(seconds / 86400) + "d";
     if (seconds >= 3600) return Math.floor(seconds / 3600) + "h";
     return Math.max(1, Math.floor(seconds / 60)) + "m";
 }
 
+function shortCountdown(epoch, nowMs) {
+    if (!epoch || epoch * 1000 <= nowMs) return "—";
+    return shortDuration(epoch - nowMs / 1000);
+}
+
 function shortWindowLabel(window) {
     if (["7d", "seven_day", "weekly"].indexOf(window.key) >= 0) return "7d";
-    if (window.key === "five_hour") return "5h";
-    if (window.key === "session") return "5h";
-    if (window.key === "monthly") return "Mês";
+    if (["5h", "five_hour", "session"].indexOf(window.key) >= 0) return "5h";
+    if (window.key === "monthly") return "mo";
     if (window.key === "purchased") return "Extra";
     return window.label;
 }
 
 function countdown(epoch, nowMs) {
-    if (!epoch) return "Renovação não informada";
+    if (!epoch) return "Reset time unavailable";
     var remaining = epoch - nowMs / 1000;
-    if (remaining <= 0) return "Aguardando nova consulta";
+    if (remaining <= 0) return "Waiting for a new query";
     var days = Math.floor(remaining / 86400);
     var hours = Math.floor(remaining % 86400 / 3600);
     var minutes = Math.floor(remaining % 3600 / 60);
-    if (days > 0) return "Renova em " + days + "d " + hours + "h";
-    if (hours > 0) return "Renova em " + hours + "h " + minutes + "min";
-    return "Renova em " + Math.max(1, minutes) + "min";
+    if (days > 0) return "Resets in " + days + "d " + hours + "h";
+    if (hours > 0) return "Resets in " + hours + "h " + minutes + "m";
+    return "Resets in " + Math.max(1, minutes) + "m";
+}
+
+function validTimestamp(epoch) {
+    return typeof epoch === "number" && isFinite(epoch) && epoch > 0;
+}
+
+function oldestTimestamp(report) {
+    var oldest = null;
+    (report ? report.providers : []).forEach(function (provider) {
+        var epoch = provider.fetched_at;
+        if (validTimestamp(epoch) && (oldest === null || epoch < oldest)) oldest = epoch;
+    });
+    return oldest;
+}
+
+function shortAge(epoch, nowMs) {
+    if (!validTimestamp(epoch)) return "—";
+    var seconds = Math.max(0, nowMs / 1000 - epoch);
+    return seconds < 60 ? "Now" : shortDuration(seconds);
+}
+
+function nextAgeInterval(epoch, nowMs) {
+    var referenceMs = epoch * 1000;
+    var minutes = Math.floor(Math.max(0, nowMs - referenceMs) / 60000);
+    return Math.max(1, Math.min(60000, Math.ceil(referenceMs + (minutes + 1) * 60000 - nowMs)));
 }
 
 function ageLabel(epoch, nowMs) {
-    if (!epoch) return "Aguardando consulta";
-    var seconds = Math.max(0, nowMs / 1000 - epoch);
-    if (seconds < 60) return "Atualizado agora";
-    return "Atualizado há " + Math.floor(seconds / 60) + " min";
+    if (!validTimestamp(epoch)) return "Waiting for a query";
+    var age = shortAge(epoch, nowMs);
+    return age === "Now" ? "Updated now" : "Updated " + age + " ago";
 }
 
 function attemptLabel(epoch, nowMs) {
-    return ageLabel(epoch, nowMs).replace("Atualizado", "Consultado");
+    return validTimestamp(epoch) ? "Last attempt: " + shortAge(epoch, nowMs) : "No query yet";
+}
+
+function footerTooltip(report, nowMs, maxAge) {
+    var lines = ["Oldest data: " + shortAge(oldestTimestamp(report), nowMs),
+                 "Cached or local-session data keeps its original timestamp."];
+    (report ? report.providers : []).forEach(function (provider) {
+        if (isStale(provider, nowMs, maxAge) || !validProvider(provider, nowMs, maxAge))
+            lines.push(provider.label + ": " + (provider.message || "Data unavailable or stale"));
+    });
+    return lines.join("\n");
 }
 
 function quote(value) {

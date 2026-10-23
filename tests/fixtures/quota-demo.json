@@ -8,12 +8,12 @@
       "label": "Codex",
       "state": "ok",
       "message": "",
-      "source": "Demonstração — dados fictícios",
+      "source": "Demo — sample data",
       "fetched_at": 1800000000,
       "windows": [
         {
           "key": "7d",
-          "label": "Semana",
+          "label": "Weekly",
           "remaining_percent": 72,
           "resets_at": 1800518400
         }
@@ -24,7 +24,7 @@
       "label": "Claude",
       "state": "ok",
       "message": "",
-      "source": "Demonstração — dados fictícios",
+      "source": "Demo — sample data",
       "fetched_at": 1800000000,
       "windows": [
         {
@@ -35,7 +35,7 @@
         },
         {
           "key": "seven_day",
-          "label": "Semana",
+          "label": "Weekly",
           "remaining_percent": 82,
           "resets_at": 1800345600
         }
@@ -46,7 +46,7 @@
       "label": "Ollama Cloud",
       "state": "ok",
       "message": "",
-      "source": "Demonstração — dados fictícios",
+      "source": "Demo — sample data",
       "fetched_at": 1800000000,
       "windows": [
         {
@@ -57,7 +57,7 @@
         },
         {
           "key": "weekly",
-          "label": "Semana",
+          "label": "Weekly",
           "remaining_percent": 35.2,
           "resets_at": 1800259200
         }

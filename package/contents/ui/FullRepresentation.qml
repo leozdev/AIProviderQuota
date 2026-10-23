@@ -2,11 +2,13 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.plasma.components as PC
+import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import "lib.js" as Lib
 
-// Page/ScrollView absorb every mouse button; let Plasma receive right presses.
+// A passive container lets Plasma receive right presses for its context menu.
 PC.Control {
     id: full
     property var report: null
@@ -14,22 +16,101 @@ PC.Control {
     property string lastError: ""
     property double nowMs: Date.now()
     property int maxAge: 600
-    property string expandedId: ""
-    // 0 follows Plasma; 1 and 2 override only this widget's appearance.
+    property string title: ""
+    property int titleAlignment: 0
+    property int bodyFontSize: 8
+    property bool showProviderIcon: true
+    property bool showQuotaPeriod: true
+    property bool showProgressBar: true
+    property bool showQuotaValue: true
+    property bool showResetTime: true
     property int themeMode: 0
     property int backgroundOpacity: 82
+    readonly property string effectiveTitle: title.trim() || i18n("AI Quotes")
+    readonly property bool showTitle: titleAlignment !== 3
     readonly property color surfaceColor: themeMode === 1 ? "#f8fafc" : themeMode === 2 ? "#171c25" : Kirigami.Theme.backgroundColor
     readonly property color inkColor: themeMode === 1 ? "#17212d" : themeMode === 2 ? "#f1f5f9" : Kirigami.Theme.textColor
     readonly property color warningColor: themeMode === 1 ? "#9a6700" : themeMode === 2 ? "#f5c46b" : Kirigami.Theme.neutralTextColor
     readonly property color negativeColor: themeMode === 1 ? "#c02832" : themeMode === 2 ? "#ff7b86" : Kirigami.Theme.negativeTextColor
+    property font labelFont: {
+        const bodyFont = Lib.scaledFont(Kirigami.Theme.smallFont, 1);
+        bodyFont.pointSize = full.bodyFontSize;
+        return bodyFont;
+    }
+    readonly property font scaledLabelFont: Lib.scaledFont(labelFont, uiScale)
+    readonly property int providerCount: report ? report.providers.length : 3
+    readonly property real baseLineHeight: Math.ceil(baseLabel.implicitHeight)
+    readonly property real baseRowHeight: Math.max(36, Math.max(16, baseLineHeight) * 2 + 4)
+    readonly property real baseCaptionWidth: Math.max(26, textWidth("Extra"))
+    readonly property real baseValueWidth: measuredValueWidth()
+    // Reserve two digits per countdown unit; clock ticks must not resize columns.
+    readonly property real baseResetWidth: Math.ceil(Math.max(26, textWidth("99w"), textWidth("99d"), textWidth("99h"), textWidth("99m")))
+    readonly property int quotaColumnCount: Number(showQuotaPeriod) + Number(showProgressBar) + Number(showQuotaValue) + Number(showResetTime)
+    readonly property real minimumWidgetWidth: Math.ceil(Math.max(240, 20 + (showProviderIcon ? baseRowHeight + 8 : 0) + (showQuotaPeriod ? baseCaptionWidth : 0) + (showQuotaValue ? baseValueWidth : 0) + (showResetTime ? baseResetWidth : 0) + (showProgressBar ? 50 : 0) + Math.max(0, quotaColumnCount - 1) * 6))
+    readonly property real minimumWidgetHeight: Math.ceil(20 + (showTitle ? baseTitle.implicitHeight + 4 : 0) + Math.max(baseRowHeight, providerCount * baseRowHeight + Math.max(0, providerCount - 1) * 4) + 4 + Math.max(24, baseLineHeight + 8))
+    // Only unscaled metrics feed minimums, so resizing cannot cause a binding loop.
+    readonly property real uiScale: Math.max(1, Math.min(1.5, width / minimumWidgetWidth, height / minimumWidgetHeight))
+    readonly property var oldestData: Lib.oldestTimestamp(report)
+    property double ageNowMs: Date.now()
+    property double observedQuotaClockMs: 0
     signal refreshRequested
-    implicitWidth: 300
-    implicitHeight: 180
-    Layout.minimumWidth: 280
-    Layout.minimumHeight: 180
-    Layout.preferredWidth: 300
-    Layout.preferredHeight: 180
-    padding: 10
+    implicitWidth: Math.max(300, minimumWidgetWidth)
+    implicitHeight: minimumWidgetHeight
+    Layout.minimumWidth: minimumWidgetWidth
+    Layout.minimumHeight: minimumWidgetHeight
+    Layout.preferredWidth: implicitWidth
+    Layout.preferredHeight: implicitHeight
+    padding: 10 * uiScale
+
+    FontMetrics { id: labelMetrics; font: Lib.scaledFont(full.labelFont, 1) }
+    PC.Label { id: baseLabel; visible: false; font: Lib.scaledFont(full.labelFont, 1); text: "100.0%" }
+    PC.Label { id: baseTitle; visible: false; font: Lib.scaledFont(Kirigami.Theme.defaultFont, 1, Font.DemiBold); text: "AI Quotes" }
+
+    function textWidth(text) {
+        // Track font changes: advanceWidth() itself has no change signal.
+        const metricsFont = labelMetrics.font;
+        return labelMetrics.advanceWidth(text);
+    }
+
+    function measuredValueWidth() {
+        let width = textWidth("100.0%");
+        (full.report ? full.report.providers : []).forEach(function (provider) {
+            Lib.displayWindows(provider).forEach(function (window) {
+                // Measure the reported value even after expiry to keep its space.
+                width = Math.max(width, textWidth(Lib.quotaValue(window)));
+            });
+        });
+        return Math.ceil(width);
+    }
+
+    function updateAge() {
+        ageTimer.stop();
+        full.ageNowMs = Date.now();
+        if (full.visible && full.oldestData !== null) {
+            ageTimer.interval = Lib.nextAgeInterval(full.oldestData, full.ageNowMs);
+            ageTimer.start();
+        }
+    }
+    onReportChanged: Qt.callLater(full.updateAge)
+    onOldestDataChanged: updateAge()
+    onVisibleChanged: updateAge()
+    // A suspended process or adjusted system clock must not keep a stale label
+    // until its old timer deadline. Normal five-second quota ticks do no work.
+    onNowMsChanged: {
+        const delta = full.nowMs - full.observedQuotaClockMs;
+        full.observedQuotaClockMs = full.nowMs;
+        if (full.visible && (delta < 0 || delta > 15000)) full.updateAge();
+    }
+    Component.onCompleted: {
+        full.observedQuotaClockMs = full.nowMs;
+        full.updateAge();
+    }
+    Timer {
+        id: ageTimer
+        objectName: "ageTimer"
+        repeat: false
+        onTriggered: full.updateAge()
+    }
 
     background: Rectangle {
         objectName: "translucentSurface"
@@ -40,256 +121,253 @@ PC.Control {
     }
 
     function quotaColor(value, providerId) {
-        if (typeof value !== "number")
-            return full.inkColor;
-        if (value <= 10)
-            return full.negativeColor;
-        if (value <= 25)
-            return full.warningColor;
+        if (typeof value !== "number") return full.inkColor;
+        if (value <= 10) return full.negativeColor;
+        if (value <= 25) return full.warningColor;
         return Lib.colorFor(providerId);
     }
 
     contentItem: ColumnLayout {
-        spacing: 4
-        RowLayout {
+        spacing: 4 * full.uiScale
+        PC.Label {
+            id: heading
+            objectName: "widgetTitle"
+            visible: full.showTitle
             Layout.fillWidth: true
+            text: full.effectiveTitle
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            horizontalAlignment: full.titleAlignment === 1 ? Text.AlignHCenter : full.titleAlignment === 2 ? Text.AlignRight : Text.AlignLeft
+            color: full.inkColor
+            font: Lib.scaledFont(Kirigami.Theme.defaultFont, full.uiScale, Font.DemiBold)
+            Accessible.name: full.effectiveTitle
+        }
+        ColumnLayout {
+            objectName: "providerList"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 4 * full.uiScale
+            Repeater {
+                model: full.report ? full.report.providers : []
+                delegate: PlasmaCore.ToolTipArea {
+                    id: provider
+                    required property var modelData
+                    objectName: "provider_" + modelData.id
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: full.baseRowHeight * full.uiScale
+                    readonly property bool current: Lib.validProvider(modelData, full.nowMs, full.maxAge)
+                    readonly property var headline: Lib.headline(modelData, full.nowMs, full.maxAge)
+                    readonly property var displayedWindows: Lib.displayWindows(modelData)
+                    readonly property bool stale: Lib.isStale(modelData, full.nowMs, full.maxAge)
+                    readonly property string tooltipText: Lib.providerTooltip(modelData, full.nowMs, full.maxAge)
+                    mainText: modelData.label
+                    subText: tooltipText
+                    textFormat: Text.PlainText
+                    // The stock native tooltip limits its subtext line count.
+                    // Keep its window, but provide an untruncated content item.
+                    mainItem: Item {
+                        implicitWidth: Math.max(1, Math.min(360, Screen.desktopAvailableWidth - 32))
+                        implicitHeight: tooltipLabel.implicitHeight + 16
+                        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+                        Kirigami.Theme.inherit: false
+                        PC.Label {
+                            id: tooltipLabel
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 8
+                            text: provider.tooltipText
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                    onContainsMouseChanged: {
+                        if (activeFocus) Qt.callLater(showToolTip);
+                    }
+                    onActiveFocusChanged: {
+                        if (activeFocus) showToolTip();
+                        else hideToolTip();
+                    }
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: modelData.label
+                    Accessible.description: tooltipText
+                    HoverHandler { id: providerHover }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 6
+                        color: full.inkColor
+                        opacity: providerHover.hovered || provider.activeFocus ? 0.04 : 0
+                    }
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 8 * full.uiScale
+                        Item {
+                            visible: full.showProviderIcon
+                            Layout.preferredWidth: full.baseRowHeight * full.uiScale
+                            Layout.preferredHeight: full.baseRowHeight * full.uiScale
+                            Layout.alignment: Qt.AlignVCenter
+                            Image {
+                                objectName: "icon_" + provider.modelData.id
+                                anchors.fill: parent
+                                source: Qt.resolvedUrl("../icons/" + provider.modelData.id + ".svg")
+                                sourceSize.width: Math.ceil(width)
+                                sourceSize.height: Math.ceil(height)
+                                fillMode: Image.PreserveAspectFit
+                                opacity: provider.headline && !provider.stale ? 1 : 0.45
+                            }
+                            Kirigami.Icon {
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                width: 12 * full.uiScale
+                                height: width
+                                source: "dialog-warning"
+                                visible: provider.stale
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 4 * full.uiScale
+                            Repeater {
+                                model: provider.current ? provider.displayedWindows : []
+                                delegate: RowLayout {
+                                    id: window
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 6 * full.uiScale
+                                    readonly property bool live: Lib.liveWindow(provider.modelData, modelData, full.nowMs, full.maxAge)
+                                    readonly property bool hasPercent: live && typeof modelData.remaining_percent === "number" && isFinite(modelData.remaining_percent)
+                                    QuotaBar {
+                                        id: quotaBar
+                                        objectName: "bar_" + provider.modelData.id + "_" + window.modelData.key
+                                        visible: full.showQuotaPeriod || full.showProgressBar || full.showQuotaValue
+                                        Layout.fillWidth: true
+                                        showCaption: full.showQuotaPeriod
+                                        showTrack: full.showProgressBar
+                                        showValue: full.showQuotaValue
+                                        scaleFactor: full.uiScale
+                                        labelFont: full.labelFont
+                                        captionWidth: full.baseCaptionWidth * full.uiScale
+                                        valueWidth: full.baseValueWidth * full.uiScale
+                                        value: window.hasPercent ? Math.max(0, Math.min(100, window.modelData.remaining_percent)) : 0
+                                        hasPercent: window.hasPercent
+                                        opacity: provider.stale ? 0.6 : 1
+                                        caption: Lib.shortWindowLabel(window.modelData)
+                                        inkColor: full.inkColor
+                                        accentColor: full.quotaColor(window.hasPercent ? window.modelData.remaining_percent : null, provider.modelData.id)
+                                        valueObjectName: "quota_" + provider.modelData.id + "_" + window.modelData.key
+                                        valueText: Lib.valueFor(provider.modelData, window.modelData, full.nowMs, full.maxAge)
+                                        Accessible.name: provider.modelData.label + ", " + window.modelData.label + ", " + i18n("available") + ": " + valueText
+                                    }
+                                    Item {
+                                        visible: !quotaBar.visible
+                                        Layout.fillWidth: true
+                                    }
+                                    PC.Label {
+                                        objectName: "reset_" + provider.modelData.id + "_" + window.modelData.key
+                                        visible: full.showResetTime
+                                        text: window.live ? Lib.shortCountdown(window.modelData.resets_at, full.nowMs) : "—"
+                                        Layout.preferredWidth: full.baseResetWidth * full.uiScale
+                                        Layout.alignment: Qt.AlignVCenter
+                                        horizontalAlignment: Text.AlignHCenter
+                                        color: full.inkColor
+                                        opacity: provider.stale ? 0.6 : 0.75
+                                        font: full.scaledLabelFont
+                                    }
+                                }
+                            }
+                            PC.Label {
+                                visible: !provider.current || provider.displayedWindows.length === 0
+                                text: provider.modelData.label + "\n" + (provider.modelData.message || i18n("Waiting for a new query"))
+                                textFormat: Text.PlainText
+                                color: full.inkColor
+                                Layout.fillWidth: true
+                                maximumLineCount: 2
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideRight
+                                opacity: 0.65
+                                font: full.scaledLabelFont
+                            }
+                        }
+                    }
+                }
+            }
             PC.Label {
-                text: i18n("Cotas de IA")
-                color: full.inkColor
-                font.weight: Font.DemiBold
-                font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                visible: !full.report || full.providerCount === 0
                 Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: full.loading ? i18n("Querying your accounts…") : i18n("Select providers in the settings.")
+                color: full.inkColor
+                font: full.scaledLabelFont
+                wrapMode: Text.WordWrap
+            }
+        }
+        RowLayout {
+            objectName: "footer"
+            Layout.fillWidth: true
+            spacing: 6 * full.uiScale
+            PC.Label {
+                id: errorLabel
+                objectName: "lastError"
+                Layout.fillWidth: true
+                text: full.lastError
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: full.negativeColor
+                font: full.scaledLabelFont
+                Accessible.description: text
+                HoverHandler { id: errorHover }
+                PC.ToolTip {
+                    parent: errorLabel
+                    text: full.lastError
+                    textFormat: Text.PlainText
+                    visible: errorHover.hovered && text.length > 0
+                }
+            }
+            PC.Label {
+                id: ageLabel
+                objectName: "lastUpdated"
+                text: Lib.shortAge(full.oldestData, full.ageNowMs)
+                color: full.inkColor
+                opacity: 0.65
+                font: full.scaledLabelFont
+                Accessible.name: i18n("Oldest data") + ": " + text
+                HoverHandler { id: ageHover }
+                PC.ToolTip {
+                    parent: ageLabel
+                    text: Lib.footerTooltip(full.report, full.nowMs, full.maxAge)
+                    textFormat: Text.PlainText
+                    visible: ageHover.hovered
+                }
             }
             PC.ToolButton {
                 objectName: "refreshButton"
                 id: refreshButton
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                Layout.maximumHeight: 24
+                Layout.preferredWidth: 24 * full.uiScale
+                Layout.preferredHeight: 24 * full.uiScale
                 icon.name: "view-refresh"
                 display: PC.AbstractButton.IconOnly
-                text: i18n("Atualizar quotas")
+                text: i18n("Refresh quotas")
                 enabled: !full.loading
                 onClicked: full.refreshRequested()
                 PC.ToolTip.text: text + " · " + Lib.attemptLabel(full.report ? full.report.generated_at : null, full.nowMs)
-                PC.ToolTip.visible: hovered
+                PC.ToolTip.visible: hovered || activeFocus
                 contentItem: Image {
-                    // Explicit stroke also follows forced themes when the icon
-                    // loader keeps the platform's original symbolic palette.
                     source: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="' + full.inkColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6A4.5 4.5 0 1 0 12 10M8.5 6H12V2.5"/></svg>')
-                    sourceSize.width: 14
-                    sourceSize.height: 14
+                    sourceSize.width: Math.ceil(14 * full.uiScale)
+                    sourceSize.height: Math.ceil(14 * full.uiScale)
                     fillMode: Image.PreserveAspectFit
                     opacity: refreshButton.enabled ? 0.8 : 0.3
                 }
-                padding: 5
+                padding: 5 * full.uiScale
                 background: Rectangle {
                     radius: 6
                     color: full.inkColor
                     opacity: refreshButton.down ? 0.12 : refreshButton.hovered || refreshButton.activeFocus ? 0.06 : 0
                 }
             }
-        }
-
-        Flickable {
-            id: scroll
-            objectName: "providerScroll"
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            contentWidth: width
-            contentHeight: providerList.implicitHeight
-            boundsBehavior: Flickable.StopAtBounds
-            clip: true
-            PC.ScrollBar.vertical: PC.ScrollBar {
-                id: verticalScrollBar
-                objectName: "providerScrollBar"
-            }
-            Kirigami.WheelHandler {
-                target: scroll
-            }
-            ColumnLayout {
-                id: providerList
-                width: scroll.width - (verticalScrollBar.visible ? verticalScrollBar.width : 0)
-                spacing: 4
-                Repeater {
-                    model: full.report ? full.report.providers : []
-                    delegate: ColumnLayout {
-                        id: provider
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: 2
-                        readonly property bool current: Lib.validProvider(modelData, full.nowMs, full.maxAge)
-                        readonly property var headline: Lib.headline(modelData, full.nowMs, full.maxAge)
-                        readonly property var displayedWindows: Lib.displayWindows(modelData)
-                        readonly property bool stale: Lib.isStale(modelData, full.nowMs, full.maxAge)
-
-                        PC.ItemDelegate {
-                            id: providerButton
-                            objectName: "provider_" + provider.modelData.id
-                            Layout.fillWidth: true
-                            implicitHeight: Math.max(40, contentItem.implicitHeight + topPadding + bottomPadding)
-                            topPadding: 2
-                            bottomPadding: 2
-                            leftPadding: 2
-                            rightPadding: 2
-                            onClicked: full.expandedId = full.expandedId === provider.modelData.id ? "" : provider.modelData.id
-                            Accessible.name: provider.modelData.label + ", " + (provider.current ? i18n("quota disponível") : i18n("indisponível"))
-                            background: Rectangle {
-                                radius: 6
-                                color: full.inkColor
-                                opacity: providerButton.down ? 0.08 : providerButton.hovered || providerButton.activeFocus ? 0.04 : 0
-                            }
-                            contentItem: RowLayout {
-                                spacing: 8
-                                Item {
-                                    Layout.preferredWidth: 36
-                                    Layout.fillHeight: true
-                                    implicitHeight: 36
-                                    Image {
-                                        objectName: "icon_" + provider.modelData.id
-                                        anchors.fill: parent
-                                        source: Qt.resolvedUrl("../icons/" + provider.modelData.id + ".svg")
-                                        sourceSize.width: Math.ceil(width)
-                                        sourceSize.height: Math.ceil(height)
-                                        fillMode: Image.PreserveAspectFit
-                                        opacity: provider.headline && !provider.stale ? 1 : 0.45
-                                    }
-                                    Kirigami.Icon {
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        width: 12
-                                        height: 12
-                                        source: "dialog-warning"
-                                        visible: provider.stale
-                                    }
-                                }
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.alignment: Qt.AlignVCenter
-                                    spacing: 4
-                                    Repeater {
-                                        model: provider.current ? provider.displayedWindows : []
-                                        delegate: RowLayout {
-                                            id: window
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            spacing: 6
-                                            readonly property bool live: Lib.liveWindow(provider.modelData, modelData, full.nowMs, full.maxAge)
-                                            readonly property bool hasPercent: live && typeof modelData.remaining_percent === "number" && isFinite(modelData.remaining_percent)
-                                            QuotaBar {
-                                                id: bar
-                                                objectName: "bar_" + provider.modelData.id + "_" + window.modelData.key
-                                                Layout.fillWidth: true
-                                                value: window.hasPercent ? Math.max(0, Math.min(100, window.modelData.remaining_percent)) : 0
-                                                hasPercent: window.hasPercent
-                                                opacity: provider.stale ? 0.6 : 1
-                                                caption: Lib.shortWindowLabel(window.modelData)
-                                                inkColor: full.inkColor
-                                                accentColor: full.quotaColor(window.hasPercent ? window.modelData.remaining_percent : null, provider.modelData.id)
-                                                valueObjectName: "quota_" + provider.modelData.id + "_" + window.modelData.key
-                                                valueText: Lib.valueFor(provider.modelData, window.modelData, full.nowMs, full.maxAge)
-                                                Accessible.name: provider.modelData.label + ", " + window.modelData.label + ", " + i18n("disponível") + ": " + valueText
-                                            }
-                                            PC.Label {
-                                                objectName: "reset_" + provider.modelData.id + "_" + window.modelData.key
-                                                text: window.live ? Lib.shortCountdown(window.modelData.resets_at, full.nowMs) : "—"
-                                                Layout.preferredWidth: 26
-                                                Layout.alignment: Qt.AlignVCenter
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                                color: full.inkColor
-                                                opacity: provider.stale ? 0.6 : 0.75
-                                                font: Kirigami.Theme.smallFont
-                                            }
-                                        }
-                                    }
-                                    PC.Label {
-                                        visible: !provider.current || provider.displayedWindows.length === 0
-                                        text: provider.modelData.label + "\n" + (provider.modelData.message || i18n("Aguardando nova consulta"))
-                                        color: full.inkColor
-                                        Layout.fillWidth: true
-                                        maximumLineCount: 2
-                                        wrapMode: Text.WordWrap
-                                        elide: Text.ElideRight
-                                        opacity: 0.65
-                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                    }
-                                }
-                            }
-                            PC.ToolTip.visible: hovered
-                            PC.ToolTip.text: Lib.providerTooltip(provider.modelData, provider.displayedWindows, full.nowMs, full.maxAge)
-                        }
-
-                        ColumnLayout {
-                            visible: full.expandedId === provider.modelData.id
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 46
-                            Layout.rightMargin: 8
-                            spacing: 5
-                            PC.Label {
-                                text: provider.modelData.label
-                                color: full.inkColor
-                                font.bold: true
-                            }
-                            Repeater {
-                                model: provider.modelData.windows
-                                delegate: ColumnLayout {
-                                    id: detail
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    spacing: 1
-                                    PC.Label {
-                                        text: detail.modelData.label + ": " + Lib.valueFor(provider.modelData, detail.modelData, full.nowMs, full.maxAge)
-                                        color: full.inkColor
-                                        Layout.fillWidth: true
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    PC.Label {
-                                        text: Lib.countdown(detail.modelData.resets_at, full.nowMs)
-                                            + (detail.modelData.resets_at ? " · " + Qt.formatDateTime(new Date(detail.modelData.resets_at * 1000), "dd/MM HH:mm") : "")
-                                        Layout.fillWidth: true
-                                        color: full.inkColor
-                                        opacity: 0.65
-                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                    }
-                                }
-                            }
-                            PC.Label {
-                                text: provider.modelData.message
-                                visible: text.length > 0
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                color: provider.modelData.state === "auth" ? full.negativeColor : full.inkColor
-                            }
-                            PC.Label {
-                                text: provider.modelData.source + (provider.modelData.source ? "\n" : "") + Lib.ageLabel(provider.modelData.fetched_at, full.nowMs)
-                                color: full.inkColor
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                opacity: 0.55
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                            }
-                        }
-                    }
-                }
-                PC.Label {
-                    visible: !full.report || full.report.providers.length === 0
-                    text: full.loading ? i18n("Consultando suas contas…") : i18n("Selecione os provedores nas configurações.")
-                    color: full.inkColor
-                    Layout.fillWidth: true
-                    wrapMode: Text.WordWrap
-                    opacity: 0.65
-                }
-            }
-        }
-        PC.Label {
-            visible: full.lastError.length > 0
-            text: full.lastError
-            color: full.inkColor
-            Layout.fillWidth: true
-            elide: Text.ElideRight
-            opacity: 0.6
-            font.pointSize: Kirigami.Theme.smallFont.pointSize
         }
     }
 }

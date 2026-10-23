@@ -6,4 +6,4 @@ if kpackagetool6 --type Plasma/Applet --show org.leoz.aiquotas >/dev/null 2>&1; 
 else
     kpackagetool6 --type Plasma/Applet --install "$project_dir/package"
 fi
-echo 'Cotas de IA instalado para este usuário. Adicione-o à área de trabalho ou ao painel pelo menu Adicionar widgets.'
+echo 'AI Quotes installed for the current user. Add it to the desktop or panel using Add Widgets.'

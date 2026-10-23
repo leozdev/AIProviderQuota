@@ -26,6 +26,27 @@ with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) 
     if args.plasma_fixture:
         shutil.copy2(ROOT / 'tests/fixture_collector.py', plugin / 'contents/code/quota_collector.py')
         shutil.copy2(ROOT / 'tests/fixtures/quota-demo.json', plugin / 'contents/code/quota-demo.json')
+        # Observe the real native layout without shipping test hooks in the widget.
+        main = plugin / 'contents/ui/main.qml'
+        source = main.read_text().rstrip()
+        main.write_text(source[:-1] + '''
+    Timer {
+        interval: 100
+        running: true
+        repeat: true
+        onTriggered: {
+            const item = root.fullRepresentationItem;
+            if (!item || root.loading || !root.report) return;
+            console.log("AIQ_TEST_METRICS " + JSON.stringify({
+                minimumWidth: item.minimumWidgetWidth,
+                minimumHeight: item.minimumWidgetHeight,
+                width: item.width, height: item.height
+            }));
+            stop();
+        }
+    }
+}
+''')
     kdeglobals = Path.home() / '.config/kdeglobals'
     if kdeglobals.exists():
         shutil.copy2(kdeglobals, base / 'config/kdeglobals')
@@ -51,6 +72,8 @@ with tempfile.TemporaryDirectory(prefix='ai-quotas-visual-', dir=args.work_dir) 
                 'XDG_CACHE_HOME': str(base / 'cache'), 'XDG_DATA_HOME': str(base / 'data'),
                 'QT_QPA_PLATFORM': 'offscreen', 'KWIN_COMPOSE': 'Q', 'QT_QUICK_BACKEND': 'software',
                 'QT_QPA_PLATFORMTHEME': 'generic', 'QT_NO_XDG_DESKTOP_PORTAL': '1',
+                'QT_FORCE_STDERR_LOGGING': '1',
+                'QT_LOGGING_RULES': env.get('QT_LOGGING_RULES', '') + ';qml.debug=true;qml.warning=true;qml.info=true',
                 'PATH': str(base / 'bin') + ':/usr/bin:/bin', 'AI_QUOTAS_ISOLATED_TEST': '1'})
     if args.plasma:
         env['KWIN_COMPOSE'] = 'O2'

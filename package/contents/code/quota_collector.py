@@ -83,7 +83,7 @@ def quota_window(key, label, remaining, resets=None, **extra):
 def report(pid, source, windows, fetched_at=None, **extra):
     windows = [w for w in windows if w is not None]
     if not windows:
-        raise SourceError("unavailable", "O provedor não retornou uma quota utilizável.")
+        raise SourceError("unavailable", 'The provider returned no usable quota.')
     return {"id": pid, "label": LABELS[pid], "state": "ok", "message": "",
             "source": source, "fetched_at": fetched_at or time.time(),
             "windows": windows, **extra}
@@ -125,7 +125,7 @@ def http_json(url, token, oauth=False):
         with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
             body = response.read(MAX_BODY + 1)
         if len(body) > MAX_BODY:
-            raise SourceError("unavailable", "Resposta do provedor excedeu o limite.")
+            raise SourceError("unavailable", 'The provider response exceeded the size limit.')
         value = json.loads(body)
         if not isinstance(value, dict):
             raise ValueError("object expected")
@@ -133,14 +133,14 @@ def http_json(url, token, oauth=False):
     except urllib.error.HTTPError as exc:
         exc.close()
         if exc.code in (401, 403):
-            raise SourceError("auth", "A autenticação foi recusada. Renove o login ou a chave.") from None
+            raise SourceError("auth", 'Authentication was rejected. Renew the login or key.') from None
         if exc.code == 429:
             retry = number(exc.headers.get("Retry-After"))
-            raise SourceError("rate_limited", "Consultas temporariamente limitadas pelo provedor.",
+            raise SourceError("rate_limited", 'Queries are temporarily rate-limited by the provider.',
                               min(86400, max(30, retry or 300))) from None
-        raise SourceError("unavailable", "Consulta indisponível (HTTP %d)." % exc.code) from None
+        raise SourceError("unavailable", 'Query unavailable (HTTP %d).' % exc.code) from None
     except (OSError, ValueError, TimeoutError):
-        raise SourceError("unavailable", "Não foi possível consultar o provedor. Verifique a conexão.") from None
+        raise SourceError("unavailable", 'Could not query the provider. Check your connection.') from None
 
 
 def qdbus(method, *args):
@@ -150,54 +150,54 @@ def qdbus(method, *args):
                                  "org.kde.KWallet." + method, *map(str, args)],
                                 capture_output=True, text=True, timeout=4, check=False)
     except (OSError, subprocess.SubprocessError):
-        raise SourceError("auth", "O KWallet não está disponível nesta sessão.") from None
+        raise SourceError("auth", 'KWallet is unavailable in this session.') from None
     if result.returncode:
-        raise SourceError("auth", "Não foi possível acessar o KWallet.")
+        raise SourceError("auth", 'Could not access KWallet.')
     return result.stdout.strip()
 
 
 def wallet_name():
     if qdbus("isEnabled") != "true":
-        raise SourceError("auth", "Habilite o KWallet para acessar a chave do Ollama.")
+        raise SourceError("auth", 'Enable KWallet to access the Ollama key.')
     wallet = qdbus("networkWallet")
     if not wallet or qdbus("isOpen", wallet) != "true":
-        raise SourceError("auth", "Desbloqueie o KWallet para consultar o Ollama Cloud.")
+        raise SourceError("auth", 'Unlock KWallet to query Ollama Cloud.')
     return wallet
 
 
 def read_ollama_key():
     wallet = wallet_name()
     if qdbus("keyDoesNotExist", wallet, FOLDER, ENTRY) == "true":
-        raise SourceError("auth", "Configure a chave do Ollama no KWallet.")
+        raise SourceError("auth", 'Configure the Ollama key in KWallet.')
     try:
         result = subprocess.run(["kwallet-query", "-f", FOLDER, "-r", ENTRY, wallet],
                                 capture_output=True, text=True, timeout=5, check=False)
     except (OSError, subprocess.SubprocessError):
-        raise SourceError("auth", "Não foi possível ler a chave no KWallet.") from None
+        raise SourceError("auth", 'Could not read the key from KWallet.') from None
     key = result.stdout.strip()
     if result.returncode or not key or len(key) > 512 or any(c.isspace() for c in key):
-        raise SourceError("auth", "A chave do Ollama não está disponível no KWallet.")
+        raise SourceError("auth", 'The Ollama key is unavailable in KWallet.')
     return key
 
 
 def store_ollama_key(replace=False, gui=False):
     wallet = wallet_name()
     if not replace and qdbus("keyDoesNotExist", wallet, FOLDER, ENTRY) != "true":
-        raise SourceError("auth", "Já existe uma chave. Use --replace para substituí-la.")
+        raise SourceError("auth", 'A key already exists. Use --replace to replace it.')
     if gui:
         try:
-            prompt = subprocess.run(["kdialog", "--title", "Cotas de IA", "--password",
-                                     "Chave de API do Ollama Cloud (substitui a chave anterior):"],
+            prompt = subprocess.run(["kdialog", "--title", 'AI Quotes', "--password",
+                                     'Ollama Cloud API key (replaces the previous key):'],
                                     capture_output=True, text=True, check=False, timeout=300)
         except (OSError, subprocess.SubprocessError):
-            raise SourceError("auth", "Não foi possível abrir a configuração da chave.") from None
+            raise SourceError("auth", 'Could not open key configuration.') from None
         if prompt.returncode:
             return {"stored": False, "cancelled": True}
         key = prompt.stdout.strip()
     else:
-        key = getpass.getpass("Chave do Ollama Cloud: ") if sys.stdin.isatty() else sys.stdin.readline().strip()
+        key = getpass.getpass('Ollama Cloud key: ') if sys.stdin.isatty() else sys.stdin.readline().strip()
     if not key or len(key) > 512 or any(c.isspace() for c in key):
-        raise SourceError("auth", "Chave vazia ou inválida.")
+        raise SourceError("auth", 'Empty or invalid key.')
     try:
         if qdbus("folderDoesNotExist", wallet, FOLDER) == "true":
             # Keep one D-Bus connection alive while using the wallet handle.
@@ -209,21 +209,21 @@ def store_ollama_key(replace=False, gui=False):
                 service = dbus.Interface(bus.get_object("org.kde.kwalletd6", "/modules/kwalletd6"), "org.kde.KWallet")
                 handle = service.open(wallet, dbus.Int64(0), "kwallet-query", timeout=10)
                 if int(handle) < 0:
-                    raise SourceError("auth", "O KWallet não autorizou o acesso.")
+                    raise SourceError("auth", 'KWallet did not authorize access.')
                 try:
                     if not service.createFolder(handle, FOLDER, "kwallet-query"):
-                        raise SourceError("auth", "Não foi possível criar a pasta no KWallet.")
+                        raise SourceError("auth", 'Could not create the folder in KWallet.')
                 finally:
                     service.close(handle, False, "kwallet-query")
             except SourceError:
                 raise
             except Exception:
-                raise SourceError("auth", "Crie a pasta AI Quotas no KWallet e tente novamente.") from None
+                raise SourceError("auth", 'Create the AI Quotas folder in KWallet and try again.') from None
         result = subprocess.run(["kwallet-query", "-f", FOLDER, "-w", ENTRY, wallet],
                                 input=key + "\n", capture_output=True, text=True,
                                 timeout=10, check=False)
         if result.returncode:
-            raise SourceError("auth", "Não foi possível guardar a chave no KWallet.")
+            raise SourceError("auth", 'Could not store the key in KWallet.')
     finally:
         key = None
     return {"stored": True, "location": "KWallet", "folder": FOLDER, "entry": ENTRY}
@@ -232,11 +232,11 @@ def store_ollama_key(replace=False, gui=False):
 def codex_window_identity(slot, minutes):
     # Adapted from upstream: labels reflect returned durations, never assumed 5h/7d.
     if minutes == 10080:
-        return "7d", "Semana"
+        return "7d", 'Weekly'
     if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes <= 0:
-        return slot, "Janela"
+        return slot, 'Window'
     if minutes % 1440 == 0:
-        return str(minutes // 1440) + "d", str(minutes // 1440) + " dias"
+        return str(minutes // 1440) + "d", str(minutes // 1440) + ' days'
     if minutes % 60 == 0:
         return str(minutes // 60) + "h", str(minutes // 60) + "h"
     return str(minutes) + "m", str(minutes) + " min"
@@ -264,7 +264,7 @@ def codex_rpc(timeout=7):
     choices = [Path.home() / ".local/bin/codex", shutil.which("codex")]
     binary = next((str(p) for p in choices if p and os.access(p, os.X_OK)), None)
     if not binary:
-        raise SourceError("unavailable", "Cliente Codex não encontrado.")
+        raise SourceError("unavailable", 'Codex client not found.')
     process = None
     # In a provider worker the app-server shares its supervised process group.
     # Direct CLI/test calls keep their own group for the same cleanup guarantee.
@@ -291,7 +291,7 @@ def codex_rpc(timeout=7):
                     continue
                 received += len(chunk)
                 if received > MAX_BODY:
-                    raise SourceError("unavailable", "Resposta do Codex excedeu o limite.")
+                    raise SourceError("unavailable", 'The Codex response exceeded the size limit.')
                 if stream.data == "stderr":
                     continue
                 buffered += chunk
@@ -301,7 +301,7 @@ def codex_rpc(timeout=7):
                     if not isinstance(value, dict):
                         continue
                     if value.get("error") is not None:
-                        raise SourceError("unavailable", "A consulta de quota do Codex foi recusada.")
+                        raise SourceError("unavailable", 'The Codex quota query was rejected.')
                     if value.get("id") == 1:
                         send({"method": "initialized", "params": {}})
                         send({"id": 2, "method": "account/rateLimits/read", "params": {}})
@@ -314,12 +314,12 @@ def codex_rpc(timeout=7):
                                 snapshot = result.get("rateLimits")
                             if isinstance(snapshot, dict):
                                 return snapshot
-                        raise SourceError("unavailable", "O cliente Codex não retornou limites válidos.")
+                        raise SourceError("unavailable", 'The Codex client returned no valid limits.')
             if process.poll() is not None and not selector.get_map():
                 break
-        raise SourceError("unavailable", "A consulta do Codex demorou demais.")
+        raise SourceError("unavailable", 'The Codex query timed out.')
     except (OSError, ValueError, subprocess.SubprocessError):
-        raise SourceError("unavailable", "Não foi possível consultar o cliente Codex.") from None
+        raise SourceError("unavailable", 'Could not query the Codex client.') from None
     finally:
         selector.close()
         if process is not None:
@@ -397,19 +397,19 @@ def codex_local_record(now):
 
 def provider_codex():
     try:
-        return report("codex", "Codex · consulta ao vivo", parse_codex(codex_rpc()))
+        return report("codex", 'Codex · live query', parse_codex(codex_rpc()))
     except SourceError as error:
         found = codex_local_record(time.time())
         if found:
-            return report("codex", "Codex · registro local", parse_codex(found[1], False),
-                          fetched_at=found[0], message="Dados da última sessão do Codex.")
+            return report("codex", 'Codex · local session log', parse_codex(found[1], False),
+                          fetched_at=found[0], message='Data from the latest Codex session.')
         raise error
 
 
 def parse_claude(data):
     windows = []
-    for key, label in (("five_hour", "5h"), ("seven_day", "Semana"),
-                       ("seven_day_opus", "Opus · semana"), ("seven_day_sonnet", "Sonnet · semana")):
+    for key, label in (("five_hour", "5h"), ("seven_day", 'Weekly'),
+                       ("seven_day_opus", 'Opus · weekly'), ("seven_day_sonnet", 'Sonnet · weekly')):
         block = data.get(key)
         if isinstance(block, dict):
             used = percentage(block.get("utilization"))
@@ -425,13 +425,13 @@ def provider_claude():
         token = auth["accessToken"]
         expiry = number(auth.get("expiresAt"))
     except (OSError, ValueError, KeyError, TypeError):
-        raise SourceError("auth", "Entre na sua conta pelo Claude Code.") from None
+        raise SourceError("auth", 'Sign in through Claude Code.') from None
     if not isinstance(token, str) or not token:
-        raise SourceError("auth", "Entre na sua conta pelo Claude Code.")
+        raise SourceError("auth", 'Sign in through Claude Code.')
     if expiry is not None and expiry / 1000 <= time.time():
-        raise SourceError("auth", "Sessão expirada. Abra o Claude Code para renovar o login.")
+        raise SourceError("auth", 'Session expired. Open Claude Code to renew the login.')
     data = http_json("https://api.anthropic.com/api/oauth/usage", token, oauth=True)
-    return report("claude", "Claude · consulta interna", parse_claude(data))
+    return report("claude", 'Claude · internal query', parse_claude(data))
 
 
 def parse_ollama(data):
@@ -439,7 +439,7 @@ def parse_ollama(data):
     if not isinstance(included, dict):
         return []
     windows = []
-    for key, label in (("session", "Sessão"), ("weekly", "Semana")):
+    for key, label in (("session", 'Session'), ("weekly", 'Weekly')):
         block = included.get(key)
         if isinstance(block, dict):
             windows.append(quota_window(key, label, block.get("remaining_percent"), block.get("resets_at")))
@@ -448,18 +448,18 @@ def parse_ollama(data):
     if balance is not None and balance >= 0:
         ratio = balance / allowance * 100 if allowance is not None and allowance > 0 else None
         period = included.get("period") or {}
-        windows.append(quota_window("monthly", "Mensal", ratio, period.get("until"),
+        windows.append(quota_window("monthly", 'Monthly', ratio, period.get("until"),
                                     remaining_usd=balance, allowance_usd=allowance))
     purchased = number((data.get("purchased") or {}).get("balance_usd"))
     if purchased is not None and purchased > 0:
-        windows.append(quota_window("purchased", "Créditos extras", None,
+        windows.append(quota_window("purchased", 'Purchased credits', None,
                                     remaining_usd=purchased, allowance_usd=None))
     return windows
 
 
 def provider_ollama():
     data = http_json("https://ollama.com/api/balance", read_ollama_key())
-    return report("ollama", "Ollama Cloud · saldo da conta", parse_ollama(data))
+    return report("ollama", 'Ollama Cloud · account balance', parse_ollama(data))
 
 
 def load_cache(pid):
@@ -514,7 +514,7 @@ def collect_provider(pid, force=False, now=None):
     cached = load_cache(pid)
     next_allowed = number(cached.get("next_allowed_at"))
     if next_allowed is not None and next_allowed > now:
-        return cached_fallback(pid, cached, SourceError("rate_limited", "Aguardando o limite de consultas do provedor."), now)
+        return cached_fallback(pid, cached, SourceError("rate_limited", 'Waiting for the provider rate limit.'), now)
     fresh = fresh_snapshot(cached, now) if not force else None
     if fresh:
         return fresh
@@ -522,7 +522,7 @@ def collect_provider(pid, force=False, now=None):
         value = {"codex": provider_codex, "claude": provider_claude, "ollama": provider_ollama}[pid]()
         value["windows"] = valid_windows(value, time.time())
         if not value["windows"]:
-            raise SourceError("unavailable", "A janela renovou. Aguardando uma nova consulta válida.")
+            raise SourceError("unavailable", 'The window reset. Waiting for a new valid query.')
         save_cache(pid, {"snapshot": value, "next_allowed_at": 0})
         return value
     except SourceError as error:
@@ -531,7 +531,7 @@ def collect_provider(pid, force=False, now=None):
         return cached_fallback(pid, cached, error, now)
     except Exception:
         # Never expose raw exceptions: a library can include HTTP headers or credentials.
-        return unavailable(pid, "unavailable", "Não foi possível interpretar a resposta do provedor.")
+        return unavailable(pid, "unavailable", 'Could not parse the provider response.')
 
 
 def provider_worker(connection, pid, force, lock_fd):
@@ -557,7 +557,7 @@ def collect_parallel(selected, force, deadline, lock_fd, reuse_fresh=False):
             except OSError:
                 reader.close()
                 process.close()
-                rows[pid] = unavailable(pid, "unavailable", "Não foi possível iniciar a coleta do provedor.")
+                rows[pid] = unavailable(pid, "unavailable", 'Could not start provider collection.')
                 continue
             finally:
                 writer.close()
@@ -569,14 +569,14 @@ def collect_parallel(selected, force, deadline, lock_fd, reuse_fresh=False):
                 try:
                     rows[pid] = reader.recv()
                 except EOFError:
-                    rows[pid] = unavailable(pid, "unavailable", "A coleta do provedor foi interrompida.")
+                    rows[pid] = unavailable(pid, "unavailable", 'Provider collection was interrupted.')
                 pending.remove(reader)
         for reader in pending:
             pid, _ = workers[reader]
             cached, now = load_cache(pid), time.time()
             fresh = fresh_snapshot(cached, now) if reuse_fresh else None
             rows[pid] = fresh or cached_fallback(pid, cached, SourceError(
-                "unavailable", "O provedor excedeu o tempo de consulta."), now)
+                "unavailable", 'The provider exceeded the query time limit.'), now)
         return [rows[pid] for pid in selected]
     finally:
         for reader, (_, process) in workers.items():
@@ -620,25 +620,25 @@ def collect(selected=PROVIDERS, force=False):
             for pid in selected:
                 cached, now = load_cache(pid), time.time()
                 rows.append(fresh_snapshot(cached, now) or cached_fallback(pid, cached, SourceError(
-                    "unavailable", "Atualização em andamento."), now))
+                    "unavailable", 'Refresh in progress.'), now))
         return {"schema_version": 1, "generated_at": time.time(), "max_age_sec": MAX_AGE, "providers": rows}
     finally:
         os.close(lock)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Coletor de quotas de assinatura para o Plasma.")
+    parser = argparse.ArgumentParser(description='Subscription quota collector for Plasma.')
     parser.add_argument("--providers", default=",".join(PROVIDERS))
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--configure-ollama", action="store_true", help="Ler chave pela entrada padrão e guardar no KWallet")
-    parser.add_argument("--gui", action="store_true", help="Solicitar a chave em uma janela de senha")
-    parser.add_argument("--replace", action="store_true", help="Permitir substituir a entrada existente no KWallet")
+    parser.add_argument("--configure-ollama", action="store_true", help='Read a key from standard input and store it in KWallet')
+    parser.add_argument("--gui", action="store_true", help='Prompt for the key in a password dialog')
+    parser.add_argument("--replace", action="store_true", help='Allow replacing the existing KWallet entry')
     args = parser.parse_args()
     if args.configure_ollama:
         try:
             print(json.dumps(store_ollama_key(args.replace, args.gui), ensure_ascii=False))
         except (SourceError, subprocess.SubprocessError) as exc:
-            print(json.dumps({"stored": False, "message": exc.message if isinstance(exc, SourceError) else "O KWallet não respondeu."}, ensure_ascii=False))
+            print(json.dumps({"stored": False, "message": exc.message if isinstance(exc, SourceError) else 'KWallet did not respond.'}, ensure_ascii=False))
             return 1
         return 0
     selected = [pid for pid in PROVIDERS if pid in args.providers.split(",")]

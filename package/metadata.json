@@ -2,8 +2,8 @@
   "KPackageStructure": "Plasma/Applet",
   "KPlugin": {
     "Id": "org.leoz.aiquotas",
-    "Name": "Cotas de IA",
-    "Description": "Quotas disponíveis do Codex, Claude e Ollama Cloud",
+    "Name": "AI Quotes",
+    "Description": "Available quotas for Codex, Claude and Ollama Cloud",
     "Icon": "view-statistics",
     "Category": "System Information",
     "Version": "1.2.4",
@@ -11,19 +11,19 @@
     "Authors": [
       {
         "Name": "Leo Zamparo (leozdev)",
-        "Task": "Desenvolvimento e manutenção do AIProviderQuota",
+        "Task": "AIProviderQuota development and maintenance",
         "Website": "https://github.com/leozdev"
       }
     ],
     "OtherContributors": [
       {
         "Name": "Marc Cheng",
-        "Task": "Autor do PlasmaWidgetAiUsage; código reutilizado sob MIT",
+        "Task": "Author of PlasmaWidgetAiUsage; code reused under MIT",
         "Website": "https://github.com/WariKoda/PlasmaWidgetAiUsage"
       }
     ],
     "Website": "https://github.com/leozdev/AIProviderQuota",
-    "Copyright": "Copyright (c) 2026 Leo Zamparo (AIProviderQuota); Copyright (c) 2026 Marc Cheng (código upstream reutilizado)"
+    "Copyright": "Copyright (c) 2026 Leo Zamparo (AIProviderQuota); Copyright (c) 2026 Marc Cheng (reused upstream code)"
   },
   "X-Plasma-API-Minimum-Version": "6.0"
 }

@@ -4,9 +4,11 @@
 
 A compact **KDE Plasma 6** widget that brings together the available quotas for **Codex**, **Claude**, and **Ollama Cloud**.
 
-![Light and dark themes](docs/images/themes.png)
+| Light | Dark |
+| --- | --- |
+| ![Light theme](docs/images/light.png) | ![Dark theme](docs/images/themes.png) |
 
-*Preview with sample data. The checkerboard shows the background transparency.*
+*Preview with sample data. Both themes use 82% background opacity.*
 
 ## Features
 
@@ -14,7 +16,10 @@ A compact **KDE Plasma 6** widget that brings together the available quotas for 
 - Up to two windows per provider: `7d` and `5h`, when available. Ollama's session is labeled `5h`.
 - Reset countdowns use a single unit: `1w`, `4d`, `2h`, or `30m`.
 - Automatic, light, and dark themes, with background opacity adjustable from 0 to 100%.
-- A 300 × 180 px card with 4 px progress bars and expandable provider details.
+- A responsive card without scrolling. Rows fill the available space; text and icons scale up while preserving a readable minimum.
+- A custom title with Left, Center, Right, or Disabled alignment. Disabling the title removes its space.
+- Complete provider details in tooltips, available by hover and keyboard focus.
+- A footer with the refresh button on the right and the age of the oldest data immediately beside it.
 - Automatic refresh every two minutes, configurable from 1 to 15 minutes.
 - A compact panel view with distinct icons and screen-reader-accessible provider names and values.
 
@@ -39,7 +44,7 @@ cd AIProviderQuota
 bash install.sh
 ```
 
-Open Plasma's widget picker, search for **Cotas de IA** (the widget's current display name), and add it to your desktop or panel.
+Open Plasma's widget picker, search for **AI Quotes**, and add it to your desktop or panel.
 
 The installer uses the package in `package/` and installs it for the current user only, without `sudo`. An existing installation is upgraded. The script does not install or update system packages.
 
@@ -51,6 +56,8 @@ bash install.sh
 ```
 
 If the widget is already loaded, Plasma may keep the previous QML in memory. Reload `plasmashell`, or sign out and back in, to load the updated interface. The installer does not restart Plasma automatically.
+
+The new UI and newly collected messages use English. Some text from an older cached report can remain in Portuguese until that report is replaced; the update does not clear the cache or force extra provider requests.
 
 ## Accounts and quota sources
 
@@ -77,11 +84,16 @@ If the wallet is locked, the widget reports that it needs to be unlocked. Automa
 
 Use the settings to choose providers, refresh interval, theme, and background opacity. By default, the widget follows Plasma's colors and uses **82% opacity**. Transparency affects the background; text and icons remain crisp. The compact panel view follows the panel's own colors.
 
-- Hover over a provider to see its name and a summary of its quota windows.
-- Click a provider row to expand values, full reset details, and collection time.
+- Hover over a provider or focus it with Tab to see every quota window, full reset dates, source, collection age, and status. Provider rows do not expand when clicked.
+- Set the title and its alignment in the widget settings. A blank title uses **AI Quotes**. Your custom text is preserved when the title is disabled.
+- Set **Font size (pt)** for the card's body text, from 6 to 24 pt (default: **8 pt**). This base size follows the widget's scale. The title keeps its Plasma font.
+- Under **Card elements**, independently show or hide the provider icon, quota period, progress bar, quota value, and reset countdown. All five are enabled by default. The value shows remaining quota (percentage or balance). These options apply to the full card; complete details remain in the provider tooltips.
+- The footer shows **Now** for data younger than a minute, then `1m`, `2m`, `1h`, `1d`, or `1w`. It updates at the data's minute boundaries, independently of provider queries. It uses the oldest provider timestamp, so cached data or a partial failure can keep an older age after refresh. If no timestamp is available, it shows `—`.
 - Use the refresh button to request a new query.
 - In the panel, each provider's indicator shows the window with the lowest remaining percentage.
-- If that window is not among the two visible bars, the tooltip identifies the most restrictive quota. Expanded details show every returned window.
+- If that window is not among the two visible bars, the tooltip identifies the most restrictive quota. The tooltip shows every returned window.
+
+The custom title applies to the full card; the panel indicator keeps the default name. Text is in English, while numbers and dates follow your system locale.
 
 If you change the selected providers during a query, the new selection is collected as soon as the current query finishes.
 
@@ -125,7 +137,7 @@ python3 tests/run_wayland_validation.py --plasma-fixture
 python3 tests/run_wayland_validation.py --plasma
 ```
 
-Results are written to `evidence/`, which is ignored by Git. The visual test uses the public `tests/fixtures/quota-demo.json` fixture; service availability is recorded separately from UI checks in the native test.
+Results are written to `evidence/`, which is ignored by Git. The visual test uses the public `tests/fixtures/quota-demo.json` fixture; service availability is recorded separately from UI checks in the native test. Automated checks cover timing, geometry, focus, accessible descriptions, settings roundtrips, and right-click propagation to a test host. Native menu interaction, the Apply/Cancel dialog flow, and actual screen-reader output require separate manual verification.
 
 ## Uninstalling
 
