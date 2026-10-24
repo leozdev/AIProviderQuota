@@ -13,12 +13,13 @@ A compact **KDE Plasma 6** widget that brings together the available quotas for 
 ## Features
 
 - A vertical list with provider icons, remaining-quota bars, and time until reset.
+- Bars keep each provider's color at every quota level.
 - Up to two windows per provider: `7d` and `5h`, when available. Ollama's session is labeled `5h`.
 - Reset countdowns use a single unit: `1w`, `4d`, `2h`, or `30m`.
 - Automatic, light, and dark themes, with background opacity adjustable from 0 to 100%.
 - A responsive card without scrolling. Rows fill the available space; text and icons scale up while preserving a readable minimum.
 - A custom title with Left, Center, Right, or Disabled alignment. Disabling the title removes its space.
-- Complete provider details in tooltips, available by hover and keyboard focus.
+- Compact provider tooltips with short periods and reset dates, available by hover and keyboard focus.
 - A footer with the refresh button on the right and the age of the oldest data immediately beside it.
 - Automatic refresh every two minutes, configurable from 1 to 15 minutes.
 - A compact panel view with distinct icons and screen-reader-accessible provider names and values.
@@ -82,11 +83,11 @@ If the wallet is locked, the widget reports that it needs to be unlocked. Automa
 
 ## Appearance and usage
 
-Use the settings to choose providers, refresh interval, theme, and background opacity. By default, the widget follows Plasma's colors and uses **82% opacity**. Transparency affects the background; text and icons remain crisp. The compact panel view follows the panel's own colors.
+Use the settings to choose providers, refresh interval, theme, and background opacity. By default, the widget follows Plasma's colors and uses **82% opacity**. The background has no border, including at 0% opacity. Transparency affects the background; text and icons remain crisp. The compact panel view follows the panel's own colors.
 
-- Hover over a provider or focus it with Tab to see every quota window, full reset dates, source, collection age, and status. Provider rows do not expand when clicked.
+- Hover over a provider or focus it with Tab to see every quota window, abbreviated local reset dates and times, source, collection age, and status. Provider rows do not expand when clicked.
 - Set the title and its alignment in the widget settings. A blank title uses **AI Quotes**. Your custom text is preserved when the title is disabled.
-- Set **Font size (pt)** for the card's body text, from 6 to 24 pt (default: **8 pt**). This base size follows the widget's scale. The title keeps its Plasma font.
+- Set **Font size (pt)** for the card's body text and provider tooltips, from 6 to 24 pt (default: **8 pt**). The card scales this base size to fit; tooltips use the base size directly. The title keeps its Plasma font.
 - Under **Card elements**, independently show or hide the provider icon, quota period, progress bar, quota value, and reset countdown. All five are enabled by default. The value shows remaining quota (percentage or balance). These options apply to the full card; complete details remain in the provider tooltips.
 - The footer shows **Now** for data younger than a minute, then `1m`, `2m`, `1h`, `1d`, or `1w`. It updates at the data's minute boundaries, independently of provider queries. It uses the oldest provider timestamp, so cached data or a partial failure can keep an older age after refresh. If no timestamp is available, it shows `—`.
 - Use the refresh button to request a new query.

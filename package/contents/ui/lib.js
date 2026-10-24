@@ -80,16 +80,17 @@ function providerSummary(provider, nowMs, maxAge) {
 
 function providerTooltip(provider, nowMs, maxAge) {
     var critical = headline(provider, nowMs, maxAge);
-    var lines = [provider.label + (isStale(provider, nowMs, maxAge) ? " · Stale data" : "")];
+    var lines = [provider.label + " · Available" + (isStale(provider, nowMs, maxAge) ? " · Stale data" : "")];
     (provider.windows || []).forEach(function (window) {
-        lines.push(window.label + ": " + valueFor(provider, window, nowMs, maxAge)
-            + " available" + (critical && critical.key === window.key ? " · Most restrictive" : ""));
-        lines.push(countdown(window.resets_at, nowMs)
-            + (window.resets_at ? " · " + Qt.formatDateTime(new Date(window.resets_at * 1000), Qt.locale().dateTimeFormat()) : ""));
+        var label = window.key === "purchased" ? window.label : shortWindowLabel(window);
+        lines.push(label + ": " + valueFor(provider, window, nowMs, maxAge)
+            + " · " + countdown(window.resets_at, nowMs)
+            + (window.resets_at ? " (" + Qt.formatDateTime(new Date(window.resets_at * 1000), "dd MMM, HH:mm") + ")" : ""));
     });
+    if (critical && !displayWindows(provider).some(function (window) { return window.key === critical.key; }))
+        lines.push("Most restrictive: " + critical.label);
     if (provider.message) lines.push(provider.message);
-    if (provider.source) lines.push(provider.source);
-    lines.push(ageLabel(provider.fetched_at, nowMs));
+    lines.push((provider.source ? provider.source + " · " : "") + ageLabel(provider.fetched_at, nowMs));
     return lines.join("\n");
 }
 
@@ -117,12 +118,7 @@ function countdown(epoch, nowMs) {
     if (!epoch) return "Reset time unavailable";
     var remaining = epoch - nowMs / 1000;
     if (remaining <= 0) return "Waiting for a new query";
-    var days = Math.floor(remaining / 86400);
-    var hours = Math.floor(remaining % 86400 / 3600);
-    var minutes = Math.floor(remaining % 3600 / 60);
-    if (days > 0) return "Resets in " + days + "d " + hours + "h";
-    if (hours > 0) return "Resets in " + hours + "h " + minutes + "m";
-    return "Resets in " + Math.max(1, minutes) + "m";
+    return "Resets in " + shortDuration(remaining);
 }
 
 function validTimestamp(epoch) {

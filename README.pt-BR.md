@@ -13,12 +13,13 @@ Widget para **KDE Plasma 6** que reúne as cotas disponíveis do **Codex**, **Cl
 ## Recursos
 
 - Lista vertical com ícones dos provedores, barras de quota disponível e tempo até a renovação.
+- As barras mantêm a cor de cada provedor em qualquer nível de quota.
 - Até duas janelas por provedor: `7d` e `5h`, quando disponíveis. A sessão do Ollama aparece como `5h`.
 - Reset em uma única unidade: `1w`, `4d`, `2h` ou `30m`.
 - Temas Automático, Claro e Escuro; opacidade do fundo ajustável de 0 a 100%.
 - Cartão responsivo sem rolagem. Linhas ocupam o espaço disponível; textos e ícones aumentam preservando um tamanho mínimo legível.
 - Título editável com alinhamento Left, Center, Right ou Disabled. Desativá-lo remove o espaço do cabeçalho.
-- Detalhes completos dos provedores no tooltip, por hover ou foco de teclado.
+- Tooltips compactos dos provedores, com períodos e datas de reset abreviados, por hover ou foco de teclado.
 - Rodapé com o botão de atualizar à direita e a idade do dado mais antigo imediatamente ao lado.
 - Atualização automática a cada dois minutos, configurável entre 1 e 15 minutos.
 - Representação compacta para o painel, com ícones distintos e nomes/valores acessíveis ao leitor de tela.
@@ -82,11 +83,11 @@ Com a carteira bloqueada, o widget informa que ela precisa ser desbloqueada. A a
 
 ## Aparência e uso
 
-Nas configurações, selecione os provedores, o intervalo de atualização, o tema e a opacidade do fundo. O padrão acompanha as cores do Plasma e usa **82% de opacidade**. A transparência afeta o fundo; textos e ícones mantêm sua nitidez. A representação no painel segue as cores do próprio painel.
+Nas configurações, selecione os provedores, o intervalo de atualização, o tema e a opacidade do fundo. O padrão acompanha as cores do Plasma e usa **82% de opacidade**. O fundo não tem borda, inclusive com 0% de opacidade. A transparência afeta o fundo; textos e ícones mantêm sua nitidez. A representação no painel segue as cores do próprio painel.
 
-- Passe o mouse ou use Tab para focar um provedor e ver todas as janelas, datas completas de reset, origem, idade da coleta e estado. As linhas não expandem ao clicar.
+- Passe o mouse ou use Tab para focar um provedor e ver todas as janelas, datas e horários locais de reset abreviados, origem, idade da coleta e estado. As linhas não expandem ao clicar.
 - Configure o texto e o alinhamento do título. Um campo vazio usa **AI Quotes**; o texto personalizado é preservado ao desativar o título.
-- Ajuste **Font size (pt)** para os textos do corpo, de 6 a 24 pt (padrão: **8 pt**). Esse tamanho base acompanha a escala do widget. O título mantém a fonte do Plasma.
+- Ajuste **Font size (pt)** para os textos do corpo e os tooltips dos provedores, de 6 a 24 pt (padrão: **8 pt**). O cartão amplia esse tamanho base conforme o espaço disponível; os tooltips usam o tamanho base diretamente. O título mantém a fonte do Plasma.
 - Em **Card elements**, habilite ou desabilite separadamente o ícone do provedor, o período da quota, a barra, o valor e o tempo até o reset. As cinco opções vêm ativadas. O valor representa a quota restante (percentual ou saldo). Essas opções valem para o cartão completo; os detalhes permanecem no tooltip do provedor.
 - O rodapé mostra **Now** para dados com menos de um minuto; depois, `1m`, `2m`, `1h`, `1d` ou `1w`. O texto muda nas viradas de minuto dos dados, independentemente das consultas. Ele usa o timestamp mais antigo: cache ou falha parcial podem manter uma idade maior mesmo após atualizar. Sem timestamp, mostra `—`.
 - Use o botão de atualizar para solicitar uma nova consulta.

@@ -261,7 +261,8 @@ def validate():
             find_item(root, 'bar_claude_seven_day_sonnet') is None
             and find_item(root, 'bar_claude_five_hour') is not None
             and find_item(root, 'bar_claude_seven_day') is not None
-            and 'Sonnet · weekly: 3% available · Most restrictive' in tooltip)
+            and 'Sonnet · weekly: 3%' in tooltip
+            and 'Most restrictive: Sonnet · weekly' in tooltip)
         usd = json.loads(json.dumps(data))
         usd['providers'][2]['windows'] = [{'key': 'purchased', 'label': 'Purchased credits',
                                           'remaining_percent': None, 'remaining_usd': 25, 'resets_at': None}]
@@ -416,7 +417,7 @@ def validate():
         provider.forceActiveFocus()
         QTest.qWait(900)
         details = provider.property('tooltipText')
-        result['checks']['tooltip_keeps_all_windows_source_and_collection_age'] = all(t in details for t in ['5h', 'Weekly', 'Sonnet · weekly', 'Opus · weekly', '3% available', 'Demo — sample data', 'Updated now', 'Resets in'])
+        result['checks']['tooltip_keeps_all_windows_source_and_collection_age'] = all(t in details for t in ['Available', '5h', '7d', 'Sonnet · weekly: 3%', 'Opus · weekly: 30%', 'Most restrictive: Sonnet · weekly', 'Demo — sample data', 'Updated now', 'Resets in'])
         result['checks']['tooltip_visible_on_keyboard_focus'] = any(tooltip_events) and provider.hasActiveFocus()
         interface = QAccessible.queryAccessibleInterface(provider)
         result['checks']['provider_accessible_description_contains_full_details'] = interface is not None and interface.text(QAccessible.Description) == details
@@ -429,7 +430,7 @@ def validate():
         tooltip_labels = [item for w in tooltip_windows for item in text_items(w.contentItem())]
         result['tooltipGeometry'] = [{'width': w.width(), 'height': w.height()} for w in tooltip_windows]
         result['tooltipLabels'] = [{'height': i.height(), 'contentHeight': i.property('contentHeight'), 'truncated': i.property('truncated')} for i in tooltip_labels]
-        result['checks']['tooltip_escapes_small_card_window'] = any(w.height() > view.height() for w in tooltip_windows)
+        result['checks']['compact_tooltip_uses_separate_native_window'] = bool(tooltip_windows) and all(w is not view for w in tooltip_windows) and len(details.splitlines()) <= 7
         result['checks']['native_tooltip_full_content_not_clipped'] = bool(tooltip_labels) and all(not i.property('truncated') and i.height() >= i.property('contentHeight') - 1 for i in tooltip_labels)
         tooltip_contrasts = []
         for w in tooltip_windows:

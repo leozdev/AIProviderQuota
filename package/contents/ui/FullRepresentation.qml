@@ -30,7 +30,6 @@ PC.Control {
     readonly property bool showTitle: titleAlignment !== 3
     readonly property color surfaceColor: themeMode === 1 ? "#f8fafc" : themeMode === 2 ? "#171c25" : Kirigami.Theme.backgroundColor
     readonly property color inkColor: themeMode === 1 ? "#17212d" : themeMode === 2 ? "#f1f5f9" : Kirigami.Theme.textColor
-    readonly property color warningColor: themeMode === 1 ? "#9a6700" : themeMode === 2 ? "#f5c46b" : Kirigami.Theme.neutralTextColor
     readonly property color negativeColor: themeMode === 1 ? "#c02832" : themeMode === 2 ? "#ff7b86" : Kirigami.Theme.negativeTextColor
     property font labelFont: {
         const bodyFont = Lib.scaledFont(Kirigami.Theme.smallFont, 1);
@@ -116,15 +115,6 @@ PC.Control {
         objectName: "translucentSurface"
         radius: 12
         color: Qt.rgba(full.surfaceColor.r, full.surfaceColor.g, full.surfaceColor.b, Math.max(0, Math.min(100, full.backgroundOpacity)) / 100)
-        border.width: 1
-        border.color: Qt.rgba(full.inkColor.r, full.inkColor.g, full.inkColor.b, 0.07)
-    }
-
-    function quotaColor(value, providerId) {
-        if (typeof value !== "number") return full.inkColor;
-        if (value <= 10) return full.negativeColor;
-        if (value <= 25) return full.warningColor;
-        return Lib.colorFor(providerId);
     }
 
     contentItem: ColumnLayout {
@@ -167,8 +157,14 @@ PC.Control {
                     // The stock native tooltip limits its subtext line count.
                     // Keep its window, but provide an untruncated content item.
                     mainItem: Item {
-                        implicitWidth: Math.max(1, Math.min(360, Screen.desktopAvailableWidth - 32))
-                        implicitHeight: tooltipLabel.implicitHeight + 16
+                        implicitWidth: {
+                            let width = 0;
+                            provider.tooltipText.split("\n").forEach(function (line) {
+                                width = Math.max(width, full.textWidth(line));
+                            });
+                            return Math.max(1, Math.min(360, Math.ceil(width) + 12, Screen.desktopAvailableWidth - 32));
+                        }
+                        implicitHeight: tooltipLabel.implicitHeight + 12
                         Kirigami.Theme.colorSet: Kirigami.Theme.Window
                         Kirigami.Theme.inherit: false
                         PC.Label {
@@ -176,8 +172,9 @@ PC.Control {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.top: parent.top
-                            anchors.margins: 8
+                            anchors.margins: 6
                             text: provider.tooltipText
+                            font: full.labelFont
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                         }
@@ -256,7 +253,7 @@ PC.Control {
                                         opacity: provider.stale ? 0.6 : 1
                                         caption: Lib.shortWindowLabel(window.modelData)
                                         inkColor: full.inkColor
-                                        accentColor: full.quotaColor(window.hasPercent ? window.modelData.remaining_percent : null, provider.modelData.id)
+                                        accentColor: Lib.colorFor(provider.modelData.id)
                                         valueObjectName: "quota_" + provider.modelData.id + "_" + window.modelData.key
                                         valueText: Lib.valueFor(provider.modelData, window.modelData, full.nowMs, full.maxAge)
                                         Accessible.name: provider.modelData.label + ", " + window.modelData.label + ", " + i18n("available") + ": " + valueText
